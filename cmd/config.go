@@ -36,6 +36,7 @@ stored at ~/.hlgo/config.yaml by default.`,
 }
 
 // configFileData is the structure written to the YAML config file.
+// Fields mirror the persisted fields in config.Config — keep in sync.
 type configFileData struct {
 	AgentKeyEnv  string `yaml:"agent_key_env"`
 	MasterKeyEnv string `yaml:"master_key_env"`
@@ -219,6 +220,9 @@ func newConfigTestCmd() *cobra.Command {
 				return err
 			}
 
+			// Return an error for missing agent key so scripts can check the exit
+			// code. JSON is already written to stdout; SilenceErrors prevents
+			// Cobra from writing the error to stderr.
 			if !agentKeySet {
 				return fmt.Errorf("agent key env var %q is not set", cfg.AgentKeyEnv)
 			}
@@ -229,6 +233,8 @@ func newConfigTestCmd() *cobra.Command {
 
 // newShowViper creates a fresh viper instance with flag values from cmd,
 // for use by config show and config test (which skip PersistentPreRunE).
+// String flags are filtered for non-empty to avoid overriding file/default
+// values; "config" always passes since it has a non-empty default.
 func newShowViper(cmd *cobra.Command) *viper.Viper {
 	v := viper.New()
 

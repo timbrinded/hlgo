@@ -138,6 +138,8 @@ func TestLoad_DefaultDexUsedWhenNoFlag(t *testing.T) {
 }
 
 func TestLoad_XDGFallback(t *testing.T) {
+	// Override HOME so ~/.hlgo doesn't exist, forcing XDG fallback.
+	t.Setenv("HOME", t.TempDir())
 	xdgDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", xdgDir)
 
