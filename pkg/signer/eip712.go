@@ -1,6 +1,8 @@
 package signer
 
 import (
+	"maps"
+
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 )
@@ -61,9 +63,7 @@ func userActionTypedData(typeName string, typeFields []apitypes.Type, message ma
 	// Set hyperliquidChain in the message. The Python SDK does this inside
 	// sign_user_signed_action. We make a shallow copy to avoid mutating the caller's map.
 	msg := make(map[string]any, len(message)+1)
-	for k, v := range message {
-		msg[k] = v
-	}
+	maps.Copy(msg, message)
 	msg["hyperliquidChain"] = hyperliquidChain(isMainnet)
 
 	return apitypes.TypedData{

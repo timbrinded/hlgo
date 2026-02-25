@@ -1,8 +1,8 @@
 package signer
 
 import (
-	"encoding/hex"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -15,9 +15,10 @@ const testPrivateKey = "0x012345678901234567890123456789012345678901234567890123
 
 func mustDecodeHexBig(t *testing.T, s string) *big.Int {
 	t.Helper()
-	// Strip 0x prefix.
-	cleaned := s[2:]
-	b, ok := new(big.Int).SetString(cleaned, 16)
+	if !strings.HasPrefix(s, "0x") {
+		t.Fatalf("expected 0x prefix in hex big int %q", s)
+	}
+	b, ok := new(big.Int).SetString(s[2:], 16)
 	if !ok {
 		t.Fatalf("decoding hex big int %q failed", s)
 	}
@@ -349,7 +350,7 @@ func TestSignL1Action_WithVault(t *testing.T) {
 	}
 
 	action := testDummyAction{Type: "dummy", Num: 100000000000}
-	vaultAddr := hexToAddress("0x1719884eb866cb12b2287399b15f7db5e7d775ea")
+	vaultAddr := common.HexToAddress("0x1719884eb866cb12b2287399b15f7db5e7d775ea")
 
 	sig, err := s.SignL1Action(action, 0, &vaultAddr, true)
 	if err != nil {
@@ -427,10 +428,3 @@ func TestSignerAddress(t *testing.T) {
 	}
 }
 
-// hexToAddress is a test helper that converts a hex string to common.Address.
-func hexToAddress(h string) common.Address {
-	b, _ := hex.DecodeString(h[2:])
-	var addr common.Address
-	copy(addr[:], b)
-	return addr
-}
