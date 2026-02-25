@@ -14,9 +14,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/timbrinded/hlgo/pkg/client"
 	"github.com/timbrinded/hlgo/pkg/output"
 )
+
+// InfoFetcher abstracts the subset of client.Client that the resolver needs.
+// This allows testing with mocks instead of requiring a real HTTP client.
+type InfoFetcher interface {
+	PostInfo(ctx context.Context, request any) (json.RawMessage, error)
+}
 
 // Resolver maps human-readable coin names to Hyperliquid asset IDs.
 type Resolver interface {
@@ -66,7 +71,7 @@ type spotToken struct {
 // CachingResolver implements Resolver with a disk-backed, TTL-based cache.
 // It is safe for concurrent use.
 type CachingResolver struct {
-	client  *client.Client
+	client  InfoFetcher
 	cache   *diskCache
 	ttl     time.Duration
 	mu      sync.RWMutex
@@ -78,7 +83,7 @@ type CachingResolver struct {
 
 // NewResolver creates a CachingResolver that fetches metadata via client,
 // caches to cacheDir with the given TTL.
-func NewResolver(c *client.Client, cacheDir string, ttl time.Duration) *CachingResolver {
+func NewResolver(c InfoFetcher, cacheDir string, ttl time.Duration) *CachingResolver {
 	return &CachingResolver{
 		client:  c,
 		cache:   newDiskCache(cacheDir),
@@ -182,7 +187,7 @@ func (r *CachingResolver) fetchMeta(ctx context.Context, metaType string) ([]byt
 	if err != nil {
 		return nil, err
 	}
-	return []byte(raw), nil
+	return raw, nil
 }
 
 // buildMaps parses perp and spot metadata and populates the lookup maps.
