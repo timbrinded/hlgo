@@ -427,4 +427,3 @@ func TestSignerAddress(t *testing.T) {
 		t.Errorf("address mismatch: got %s, want %s", got, expected)
 	}
 }
-
