@@ -105,13 +105,18 @@ an existing config unless --force is passed.`,
 
 			for _, envName := range []string{agentKeyEnv, masterKeyEnv} {
 				if envName != "" && os.Getenv(envName) == "" {
-					fmt.Fprintf(cmd.ErrOrStderr(), "warning: environment variable %s is not set\n", envName)
+					if _, werr := fmt.Fprintf(cmd.ErrOrStderr(), "warning: environment variable %s is not set\n", envName); werr != nil {
+						return werr
+					}
 				}
 			}
 
-			result, _ := json.Marshal(map[string]string{"path": cfgPath})
-			fmt.Fprintln(cmd.OutOrStdout(), string(result))
-			return nil
+			result, err := json.Marshal(map[string]string{"path": cfgPath})
+			if err != nil {
+				return fmt.Errorf("marshal result: %w", err)
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(result))
+			return err
 		},
 	}
 
@@ -162,8 +167,8 @@ func newConfigShowCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), string(out))
-			return nil
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(out))
+			return err
 		},
 	}
 }
@@ -193,8 +198,11 @@ func newConfigTestCmd() *cobra.Command {
 
 			if err != nil {
 				result["config_error"] = err.Error()
-				out, _ := json.MarshalIndent(result, "", "  ")
-				fmt.Fprintln(cmd.OutOrStdout(), string(out))
+				if out, merr := json.MarshalIndent(result, "", "  "); merr == nil {
+					if _, werr := fmt.Fprintln(cmd.OutOrStdout(), string(out)); werr != nil {
+						return werr
+					}
+				}
 				return fmt.Errorf("config not readable: %w", err)
 			}
 
@@ -207,7 +215,9 @@ func newConfigTestCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), string(out))
+			if _, err = fmt.Fprintln(cmd.OutOrStdout(), string(out)); err != nil {
+				return err
+			}
 
 			if !agentKeySet {
 				return fmt.Errorf("agent key env var %q is not set", cfg.AgentKeyEnv)
