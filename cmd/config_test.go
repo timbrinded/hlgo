@@ -121,3 +121,37 @@ func TestConfigInit_WarnsOnMissingEnv(t *testing.T) {
 		t.Errorf("expected warning about unset env var, got stderr: %q", stderr.String())
 	}
 }
+
+func TestConfigShow_Output(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	os.WriteFile(cfgPath, []byte("agent_key_env: TEST_KEY\nmetadata_ttl: 120\n"), 0600)
+	t.Setenv("TEST_KEY", "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
+
+	root := NewRootCommand("test")
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetArgs([]string{"config", "show", "--config", cfgPath})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+
+	var out map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+		t.Fatalf("stdout not valid JSON: %v\nraw: %s", err, buf.String())
+	}
+
+	if out["agent_key_set"] != true {
+		t.Error("agent_key_set should be true")
+	}
+
+	preview, _ := out["agent_key_preview"].(string)
+	if !strings.Contains(preview, "...") {
+		t.Errorf("expected redacted preview, got %q", preview)
+	}
+	// Full key must not appear in output
+	if strings.Contains(buf.String(), "1234567890abcdef1234567890abcdef1234567890abcdef12") {
+		t.Error("full key material appears in output")
+	}
+}

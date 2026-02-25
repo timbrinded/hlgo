@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"go.yaml.in/yaml/v3"
 
 	"github.com/timbrinded/hlgo/pkg/config"
@@ -27,6 +28,7 @@ stored at ~/.hlgo/config.yaml by default.`,
 
 	cmd.AddCommand(
 		newConfigInitCmd(),
+		newConfigShowCmd(),
 	)
 
 	return cmd
@@ -119,4 +121,65 @@ an existing config unless --force is passed.`,
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing config file")
 
 	return cmd
+}
+
+func newConfigShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:         "show",
+		Short:       "Display resolved configuration with key redaction",
+		Annotations: map[string]string{"skipConfig": "true"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			v := newShowViper(cmd)
+			cfg, err := config.Load(v)
+			if err != nil {
+				return err
+			}
+
+			agentKeyVal := os.Getenv(cfg.AgentKeyEnv)
+			masterKeyVal := os.Getenv(cfg.MasterKeyEnv)
+
+			result := map[string]any{
+				"config_file":    v.ConfigFileUsed(),
+				"agent_key_env":  cfg.AgentKeyEnv,
+				"agent_key_set":  agentKeyVal != "",
+				"master_key_env": cfg.MasterKeyEnv,
+				"master_key_set": masterKeyVal != "",
+				"testnet":        cfg.Testnet,
+				"format":         cfg.Format,
+				"default_dex":    cfg.DefaultDex,
+				"metadata_ttl":   cfg.MetadataTTL,
+			}
+
+			if agentKeyVal != "" {
+				result["agent_key_preview"] = config.RedactKey(agentKeyVal)
+			}
+			if masterKeyVal != "" {
+				result["master_key_preview"] = config.RedactKey(masterKeyVal)
+			}
+
+			out, err := json.MarshalIndent(result, "", "  ")
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), string(out))
+			return nil
+		},
+	}
+}
+
+// newShowViper creates a fresh viper instance with flag values from cmd,
+// for use by config show and config test (which skip PersistentPreRunE).
+func newShowViper(cmd *cobra.Command) *viper.Viper {
+	v := viper.New()
+
+	for _, key := range []string{"config", "format", "dex"} {
+		if val := cmd.Flag(key).Value.String(); val != "" {
+			v.Set(key, val)
+		}
+	}
+	for _, key := range []string{"testnet", "dry-run", "quiet"} {
+		v.Set(key, cmd.Flag(key).Value.String() == "true")
+	}
+
+	return v
 }
