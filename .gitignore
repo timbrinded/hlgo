@@ -1,2 +1,8 @@
+# Build artifacts
+bin/
+dist/
+coverage.out
+coverage.html
+
 # Worktrees
 .worktrees/

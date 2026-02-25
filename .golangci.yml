@@ -1,0 +1,26 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - gocritic
+    - noctx
+    - bodyclose
+
+  settings:
+    errcheck:
+      check-blank: true
+
+issues:
+  exclude-rules:
+    # Test files: allow unchecked errors for test helpers and assertions.
+    - path: _test\.go
+      linters:
+        - errcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
