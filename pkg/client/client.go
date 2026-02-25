@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -191,10 +192,5 @@ func (e *retryableError) Unwrap() error { return e.err }
 // isRetryable reports whether err signals a transient failure worth retrying.
 func isRetryable(err error) bool {
 	var re *retryableError
-	ok := false
-	if err != nil {
-		// Use type assertion rather than errors.As to only match direct wrapping.
-		re, ok = err.(*retryableError)
-	}
-	return ok && re != nil
+	return errors.As(err, &re)
 }
