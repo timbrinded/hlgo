@@ -15,7 +15,7 @@
 
 ## Build, Test, and Development
 
-- Go 1.22+
+- Go 1.26+
 - Build: `go build -o hlgo .`
 - Test: `go test ./...`
 - Vet: `go vet ./...`
