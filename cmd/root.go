@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/timbrinded/hlgo/pkg/config"
 )
 
 // NewRootCommand constructs the root hlgo command with all subcommands registered.
@@ -21,10 +22,20 @@ Errors are returned as structured JSON to stderr with machine-readable codes.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Reserved for config loading (#6). When implemented, this will:
-			// 1. Resolve config file path (flag > env > default)
-			// 2. Load and validate config
-			// 3. Inject config into command context
+			if cmd.Annotations["skipConfig"] == "true" {
+				return nil
+			}
+			// Cobra built-in commands (help, completion) lack annotations;
+			// skip config loading for them by name.
+			switch cmd.Name() {
+			case "help", "completion":
+				return nil
+			}
+			cfg, err := config.Load(v)
+			if err != nil {
+				return err
+			}
+			cmd.SetContext(config.WithContext(cmd.Context(), cfg))
 			return nil
 		},
 	}

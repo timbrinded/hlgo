@@ -10,8 +10,9 @@ import (
 // closure — no package-level variable needed.
 func newVersionCmd(version string) *cobra.Command {
 	return &cobra.Command{
-		Use:   "version",
-		Short: "Print the hlgo version",
+		Use:         "version",
+		Short:       "Print the hlgo version",
+		Annotations: map[string]string{"skipConfig": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, err := fmt.Fprintln(cmd.OutOrStdout(), version)
 			return err
