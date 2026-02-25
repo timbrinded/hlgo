@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	github.com/olekukonko/tablewriter v1.1.3
+	github.com/shopspring/decimal v1.4.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	go.yaml.in/yaml/v3 v3.0.4
