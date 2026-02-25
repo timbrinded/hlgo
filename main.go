@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/timbrinded/hlgo/cmd"
+	"github.com/timbrinded/hlgo/pkg/output"
 )
 
 // version is set at build time via:
@@ -13,6 +14,6 @@ var version = "dev"
 
 func main() {
 	if err := cmd.NewRootCommand(version).Execute(); err != nil {
-		os.Exit(1)
+		os.Exit(output.WriteError(os.Stderr, err))
 	}
 }
