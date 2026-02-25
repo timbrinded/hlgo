@@ -153,6 +153,7 @@ func newConfigShowCmd() *cobra.Command {
 				"master_key_set": masterKeyVal != "",
 				"testnet":        cfg.Testnet,
 				"format":         cfg.Format,
+				"dex":            cfg.Dex,
 				"default_dex":    cfg.DefaultDex,
 				"metadata_ttl":   cfg.MetadataTTL,
 			}
@@ -183,8 +184,10 @@ func newConfigTestCmd() *cobra.Command {
 			v := newShowViper(cmd)
 			cfg, err := config.Load(v)
 
+			configFile := v.ConfigFileUsed()
 			result := map[string]any{
-				"config_readable":    err == nil,
+				"config_file":        configFile,
+				"config_readable":    configFile != "" && err == nil,
 				"agent_key_env_set":  false,
 				"master_key_env_set": false,
 				"connectivity": map[string]string{

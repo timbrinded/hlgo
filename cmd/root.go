@@ -25,6 +25,12 @@ Errors are returned as structured JSON to stderr with machine-readable codes.`,
 			if cmd.Annotations["skipConfig"] == "true" {
 				return nil
 			}
+			// Cobra built-in commands (help, completion) lack annotations;
+			// skip config loading for them by name.
+			switch cmd.Name() {
+			case "help", "completion":
+				return nil
+			}
 			cfg, err := config.Load(v)
 			if err != nil {
 				return err

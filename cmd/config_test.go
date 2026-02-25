@@ -183,6 +183,28 @@ func TestConfigTest_AllGood(t *testing.T) {
 	}
 }
 
+func TestConfigTest_NoFileReportsNotReadable(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("TEST_KEY", "0xdeadbeef")
+
+	root := NewRootCommand("test")
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetArgs([]string{"config", "test"})
+
+	// Will error because agent key env defaults to HL_AGENT_KEY which isn't set,
+	// but we care about config_readable in the JSON output.
+	root.Execute()
+
+	var out map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+		t.Fatalf("stdout not valid JSON: %v\nraw: %s", err, buf.String())
+	}
+	if out["config_readable"] != false {
+		t.Error("config_readable should be false when no config file exists")
+	}
+}
+
 func TestConfigTest_MissingEnvVar(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")

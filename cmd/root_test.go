@@ -123,3 +123,17 @@ func TestConfigLoading_SkippedForVersion(t *testing.T) {
 		t.Fatalf("version should not require config: %v", err)
 	}
 }
+
+func TestConfigLoading_SkippedForHelp(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	os.WriteFile(cfgPath, []byte(":\x00bad"), 0600)
+
+	root := NewRootCommand("test")
+	root.SetOut(new(bytes.Buffer))
+	root.SetArgs([]string{"help", "--config", cfgPath})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("help should not fail with bad config: %v", err)
+	}
+}
