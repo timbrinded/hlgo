@@ -16,9 +16,10 @@
 ## Build, Test, and Development
 
 - Go 1.26+
-- Build: `go build -o hlgo .`
-- Test: `go test ./...`
-- Vet: `go vet ./...`
+- Build: `make build` (runs fmt → vet → compile)
+- Test: `make test` (race detector enabled)
+- Lint: `make lint` (golangci-lint with `errcheck check-blank:true` — see `.golangci.yml`)
+- Pre-push check: `make check` (fmt → tidy → vet → lint → test)
 - Version injection: `go build -ldflags "-X main.version=x.y.z" -o hlgo .`
 - Dependencies: `github.com/spf13/cobra`, `github.com/spf13/viper`, `github.com/shopspring/decimal`
 
@@ -51,7 +52,8 @@
 - Commit messages: concise, action-oriented (e.g. `cmd: scaffold info command group`)
 - Scope commits to the domain they touch (e.g. `signer:`, `wire:`, `cmd:`)
 - Do not force-push to `main`.
-- Run `go vet ./...` and `go test ./...` before committing.
+- Before committing: run `go vet ./...` and `go test ./...`.
+- **Before pushing: run `make check`** — this includes `golangci-lint` which CI enforces. Fix all lint issues before pushing.
 
 ## Security
 
