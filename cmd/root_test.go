@@ -2,8 +2,13 @@ package cmd
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
+	"github.com/timbrinded/hlgo/pkg/config"
 )
 
 func TestNewRootCommand_DoesNotPanic(t *testing.T) {
@@ -74,5 +79,47 @@ func TestGlobalFlags_Registered(t *testing.T) {
 		if pf.DefValue != f.def {
 			t.Errorf("flag --%s default = %q, want %q", f.name, pf.DefValue, f.def)
 		}
+	}
+}
+
+func TestConfigLoading_InjectsContext(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	content := []byte("agent_key_env: TEST_AGENT_KEY\nmetadata_ttl: 60\n")
+	if err := os.WriteFile(cfgPath, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	root := NewRootCommand("test")
+	var gotCfg *config.Config
+	root.AddCommand(&cobra.Command{
+		Use: "test-ctx",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			gotCfg = config.FromContext(cmd.Context())
+			return nil
+		},
+	})
+
+	root.SetArgs([]string{"--config", cfgPath, "test-ctx"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+
+	if gotCfg == nil {
+		t.Fatal("config not injected into context")
+	}
+	if gotCfg.AgentKeyEnv != "TEST_AGENT_KEY" {
+		t.Errorf("AgentKeyEnv = %q, want %q", gotCfg.AgentKeyEnv, "TEST_AGENT_KEY")
+	}
+}
+
+func TestConfigLoading_SkippedForVersion(t *testing.T) {
+	root := NewRootCommand("1.0.0")
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetArgs([]string{"version"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("version should not require config: %v", err)
 	}
 }
