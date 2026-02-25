@@ -19,13 +19,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v6
+
+      - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version-file: go.mod
+          cache: true
+
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.6
+          version: v2.1.6
+          # Build from source using the CI Go toolchain so the linter
+          # version matches the go.mod Go version (avoids "built with
+          # older Go" errors when go.mod targets a recent release).
+          install-mode: goinstall
 
   test:
     name: Test
