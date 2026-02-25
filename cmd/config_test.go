@@ -155,3 +155,46 @@ func TestConfigShow_Output(t *testing.T) {
 		t.Error("full key material appears in output")
 	}
 }
+
+func TestConfigTest_AllGood(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	os.WriteFile(cfgPath, []byte("agent_key_env: TEST_KEY\n"), 0600)
+	t.Setenv("TEST_KEY", "0xdeadbeef")
+
+	root := NewRootCommand("test")
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetArgs([]string{"config", "test", "--config", cfgPath})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+
+	var out map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+		t.Fatalf("stdout not valid JSON: %v", err)
+	}
+	if out["config_readable"] != true {
+		t.Error("config_readable should be true")
+	}
+	if out["agent_key_env_set"] != true {
+		t.Error("agent_key_env_set should be true")
+	}
+}
+
+func TestConfigTest_MissingEnvVar(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	os.WriteFile(cfgPath, []byte("agent_key_env: DEFINITELY_NOT_SET_XYZ\n"), 0600)
+
+	root := NewRootCommand("test")
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetArgs([]string{"config", "test", "--config", cfgPath})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error when agent key env var is not set")
+	}
+}

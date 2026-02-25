@@ -29,6 +29,7 @@ stored at ~/.hlgo/config.yaml by default.`,
 	cmd.AddCommand(
 		newConfigInitCmd(),
 		newConfigShowCmd(),
+		newConfigTestCmd(),
 	)
 
 	return cmd
@@ -162,6 +163,55 @@ func newConfigShowCmd() *cobra.Command {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), string(out))
+			return nil
+		},
+	}
+}
+
+func newConfigTestCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:         "test",
+		Short:       "Validate configuration and connectivity",
+		Annotations: map[string]string{"skipConfig": "true"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			v := newShowViper(cmd)
+			cfg, err := config.Load(v)
+
+			result := map[string]any{
+				"config_readable":  err == nil,
+				"agent_key_env_set":  false,
+				"master_key_env_set": false,
+				"connectivity": map[string]string{
+					"status": "skipped",
+					"reason": "http client not implemented",
+				},
+				"agent_approved": map[string]string{
+					"status": "skipped",
+					"reason": "http client not implemented",
+				},
+			}
+
+			if err != nil {
+				result["config_error"] = err.Error()
+				out, _ := json.MarshalIndent(result, "", "  ")
+				fmt.Fprintln(cmd.OutOrStdout(), string(out))
+				return fmt.Errorf("config not readable: %w", err)
+			}
+
+			agentKeySet := cfg.AgentKeyEnv != "" && os.Getenv(cfg.AgentKeyEnv) != ""
+			masterKeySet := cfg.MasterKeyEnv != "" && os.Getenv(cfg.MasterKeyEnv) != ""
+			result["agent_key_env_set"] = agentKeySet
+			result["master_key_env_set"] = masterKeySet
+
+			out, err := json.MarshalIndent(result, "", "  ")
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), string(out))
+
+			if !agentKeySet {
+				return fmt.Errorf("agent key env var %q is not set", cfg.AgentKeyEnv)
+			}
 			return nil
 		},
 	}
