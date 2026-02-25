@@ -178,7 +178,7 @@ func newConfigTestCmd() *cobra.Command {
 			cfg, err := config.Load(v)
 
 			result := map[string]any{
-				"config_readable":  err == nil,
+				"config_readable":    err == nil,
 				"agent_key_env_set":  false,
 				"master_key_env_set": false,
 				"connectivity": map[string]string{
