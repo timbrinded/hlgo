@@ -136,3 +136,24 @@ func TestLoad_DefaultDexUsedWhenNoFlag(t *testing.T) {
 		t.Errorf("Dex = %q, want %q (from default_dex)", cfg.Dex, "xyz")
 	}
 }
+
+func TestLoad_XDGFallback(t *testing.T) {
+	xdgDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdgDir)
+
+	hlgoDir := filepath.Join(xdgDir, "hlgo")
+	os.MkdirAll(hlgoDir, 0700)
+	cfgPath := filepath.Join(hlgoDir, "config.yaml")
+	os.WriteFile(cfgPath, []byte("agent_key_env: XDG_FOUND\n"), 0600)
+
+	// Use default config path so discovery kicks in via AddConfigPath
+	v := newTestViper(DefaultConfigPath)
+
+	cfg, err := Load(v)
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	if cfg.AgentKeyEnv != "XDG_FOUND" {
+		t.Errorf("AgentKeyEnv = %q, want %q (from XDG path)", cfg.AgentKeyEnv, "XDG_FOUND")
+	}
+}
