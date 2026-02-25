@@ -1,6 +1,6 @@
 # Hyperliquid Go CLI — Technical Specification
 
-**Project:** `hlctl` — A Go CLI for Hyperliquid, designed as a Claude Code skill tool  
+**Project:** `hlgo` — A Go CLI for Hyperliquid, designed as a Claude Code skill tool  
 **Version:** 0.1.0 (Draft)  
 **Date:** 2026-02-24  
 **Author:** Tim / Moonsong Labs
@@ -9,7 +9,7 @@
 
 ## 1. Purpose & Design Philosophy
 
-`hlctl` is a Go command-line tool that wraps the full Hyperliquid API (perps, spot, HIP-3) for use as a **Claude Code skill**. The agent calls `hlctl` subcommands, receives structured JSON, and reasons about trading decisions.
+`hlgo` is a Go command-line tool that wraps the full Hyperliquid API (perps, spot, HIP-3) for use as a **Claude Code skill**. The agent calls `hlgo` subcommands, receives structured JSON, and reasons about trading decisions.
 
 ### Design Principles
 
@@ -80,7 +80,7 @@ The CLI should track weight consumption and warn (not block) when approaching li
 
 ## 3. Command Structure
 
-All commands follow the pattern: `hlctl <domain> <action> [flags]`
+All commands follow the pattern: `hlgo <domain> <action> [flags]`
 
 Global flags available on every command:
 
@@ -88,7 +88,7 @@ Global flags available on every command:
 |-----------|------------|----------------------|---------------------------------------------|
 |`--format` |`HL_FORMAT` |`json`                |Output format: `json`, `table`, `csv`        |
 |`--testnet`|`HL_TESTNET`|`false`               |Use testnet endpoints                        |
-|`--config` |`HL_CONFIG` |`~/.hlctl/config.yaml`|Config file path                             |
+|`--config` |`HL_CONFIG` |`~/.hlgo/config.yaml`|Config file path                             |
 |`--quiet`  |—           |`false`               |Suppress non-essential output                |
 |`--dry-run`|—           |`false`               |Show what would be signed/sent, don’t execute|
 |`--dex`    |`HL_DEX`    |`""`                  |HIP-3 perp dex name (empty = validator perps)|
@@ -101,7 +101,7 @@ Global flags available on every command:
 
 ### 4.1 Info Commands (Read-Only, No Auth)
 
-#### `hlctl info mids`
+#### `hlgo info mids`
 Get all mid-market prices.
 
 ```json
@@ -111,7 +111,7 @@ POST /info {"type": "allMids"}
 Optional: `--dex <name>` for HIP-3 dex mids.
 Returns: `{"BTC": "95123.5", "ETH": "3412.1", ...}`
 
-#### `hlctl info meta`
+#### `hlgo info meta`
 Get universe metadata.
 
 ```json
@@ -122,7 +122,7 @@ POST /info {"type": "spotMeta"}
 
 Flags: `--spot`, `--dex <name>`
 
-#### `hlctl info meta-and-ctxs`
+#### `hlgo info meta-and-ctxs`
 Combined metadata + market context.
 
 ```json
@@ -133,7 +133,7 @@ POST /info {"type": "spotMetaAndAssetCtxs"}
 
 Flags: `--spot`, `--dex <name>`
 
-#### `hlctl info book <coin>`
+#### `hlgo info book <coin>`
 L2 order book.
 
 ```json
@@ -144,7 +144,7 @@ POST /info {"type": "l2Book", "coin": "xyz:XYZ100"}
 
 Flags: `--depth <n>`, `--sigfigs <n>`
 
-#### `hlctl info trades <coin>`
+#### `hlgo info trades <coin>`
 Recent trades.
 
 ```json
@@ -153,7 +153,7 @@ POST /info {"type": "recentTrades", "coin": "ETH"}
 
 Flags: `--limit <n>` (default 50)
 
-#### `hlctl info candles <coin> <interval>`
+#### `hlgo info candles <coin> <interval>`
 OHLCV candlestick data.
 
 ```json
@@ -163,7 +163,7 @@ POST /info {"type": "candleSnapshot", "coin": "ETH", "interval": "1h", "startTim
 Intervals: `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `8h`, `12h`, `1d`, `3d`, `1w`, `1M`  
 Flags: `--start <ISO>`, `--end <ISO>`, `--limit <n>`
 
-#### `hlctl info funding <coin>`
+#### `hlgo info funding <coin>`
 Current and predicted funding rates.
 
 ```json
@@ -173,7 +173,7 @@ POST /info {"type": "predictedFundings"}
 
 Flags: `--predicted`
 
-#### `hlctl info state [address]`
+#### `hlgo info state [address]`
 Full clearinghouse state.
 
 ```json
@@ -183,14 +183,14 @@ POST /info {"type": "clearinghouseState", "user": "0x...", "dex": "xyz"}
 
 Defaults to agent wallet address if no address provided.
 
-#### `hlctl info spot-state [address]`
+#### `hlgo info spot-state [address]`
 Spot balances and holds.
 
 ```json
 POST /info {"type": "spotClearinghouseState", "user": "0x..."}
 ```
 
-#### `hlctl info open-orders [address]`
+#### `hlgo info open-orders [address]`
 All open orders for user.
 
 ```json
@@ -198,7 +198,7 @@ POST /info {"type": "frontendOpenOrders", "user": "0x..."}
 POST /info {"type": "frontendOpenOrders", "user": "0x...", "dex": "xyz"}
 ```
 
-#### `hlctl info fills [address]`
+#### `hlgo info fills [address]`
 Recent fills.
 
 ```json
@@ -206,21 +206,21 @@ POST /info {"type": "userFills", "user": "0x..."}
 POST /info {"type": "userFillsByTime", "user": "0x...", "startTime": ..., "endTime": ...}
 ```
 
-#### `hlctl info order-status <oid>`
+#### `hlgo info order-status <oid>`
 Order status by OID or CLOID.
 
 ```json
 POST /info {"type": "orderStatus", "user": "0x...", "oid": 12345}
 ```
 
-#### `hlctl info rate-limit [address]`
+#### `hlgo info rate-limit [address]`
 Rate limit status.
 
 ```json
 POST /info {"type": "userRateLimit", "user": "0x..."}
 ```
 
-#### `hlctl info perp-dexs`
+#### `hlgo info perp-dexs`
 List all HIP-3 perp dexes.
 
 ```json
@@ -231,7 +231,7 @@ POST /info {"type": "perpDexs"}
 
 All exchange commands use the **agent wallet** for signing (L1 phantom agent path).
 
-#### `hlctl order place`
+#### `hlgo order place`
 Place a limit order.
 
 Key flags:
@@ -245,45 +245,45 @@ Key flags:
 
 The CLI resolves asset IDs, tick size, and lot size from metadata, then rounds and signs correctly.
 
-#### `hlctl order market`
+#### `hlgo order market`
 IOC convenience wrapper with slippage-adjusted price.
 
-#### `hlctl order cancel` / `cancel-all`
+#### `hlgo order cancel` / `cancel-all`
 Cancel by OID, CLOID, per coin, or globally.
 
-#### `hlctl order modify`
+#### `hlgo order modify`
 Modify existing order price/size.
 
-#### `hlctl order batch`
+#### `hlgo order batch`
 Batch place orders from `--file orders.json`.
 
-#### `hlctl position leverage`
+#### `hlgo position leverage`
 Set leverage and margin mode.
 
-#### `hlctl position margin`
+#### `hlgo position margin`
 Update isolated margin.
 
-#### `hlctl order schedule-cancel`
+#### `hlgo order schedule-cancel`
 Dead man’s switch.
 
 ### 4.3 Account Commands (Signed, Master Wallet)
 
-- `hlctl account transfer`
-- `hlctl account withdraw`
-- `hlctl account class-transfer`
-- `hlctl account send-asset`
-- `hlctl account approve-agent`
-- `hlctl account dex-abstraction`
+- `hlgo account transfer`
+- `hlgo account withdraw`
+- `hlgo account class-transfer`
+- `hlgo account send-asset`
+- `hlgo account approve-agent`
+- `hlgo account dex-abstraction`
 
 ### 4.4 Configuration & Setup
 
-#### `hlctl config init`
-Interactive setup creating `~/.hlctl/config.yaml`.
+#### `hlgo config init`
+Interactive setup creating `~/.hlgo/config.yaml`.
 
-#### `hlctl config show`
+#### `hlgo config show`
 Resolved config with key redaction.
 
-#### `hlctl config test`
+#### `hlgo config test`
 Wallet connectivity + agent approval checks.
 
 -----
@@ -311,7 +311,7 @@ Wallet connectivity + agent approval checks.
 ### 7.1 Package Layout
 
 ```text
-hlctl/
+hlgo/
 ├── cmd/
 ├── pkg/
 │   ├── client/
@@ -338,7 +338,7 @@ hlctl/
 
 ### 7.3 Metadata Cache
 
-Cache `meta`, `spotMeta`, `perpDexs` for 5 minutes by default under `~/.hlctl/cache/`.
+Cache `meta`, `spotMeta`, `perpDexs` for 5 minutes by default under `~/.hlgo/cache/`.
 
 ### 7.4 Tick & Lot Size Precision Rules
 
@@ -403,9 +403,9 @@ Scripted CLI subprocess flow validating end-to-end JSON output and lifecycle beh
 ## 10. Build & Release
 
 ```bash
-go build -o hlctl .
-GOOS=linux GOARCH=amd64 go build -o hlctl-linux-amd64 .
-GOOS=darwin GOARCH=arm64 go build -o hlctl-darwin-arm64 .
+go build -o hlgo .
+GOOS=linux GOARCH=amd64 go build -o hlgo-linux-amd64 .
+GOOS=darwin GOARCH=arm64 go build -o hlgo-darwin-arm64 .
 go install .
 ```
 

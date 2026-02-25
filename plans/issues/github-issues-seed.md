@@ -1,4 +1,4 @@
-# GitHub Issue Seed Backlog for `hlctl`
+# GitHub Issue Seed Backlog for `hlgo`
 
 > These are ready-to-copy issue drafts for bootstrapping repository work tracking.
 > I could not publish directly to GitHub from this environment because no git remote is configured.
@@ -23,7 +23,7 @@ Create initial Go module and Cobra CLI skeleton matching the package layout in t
 Implement Viper-backed config resolution + env override support and interactive initialization.
 
 ### Acceptance Criteria
-- Supports `~/.hlctl/config.yaml` and `HL_CONFIG` override.
+- Supports `~/.hlgo/config.yaml` and `HL_CONFIG` override.
 - Env var based key references (`HL_AGENT_KEY`, `HL_MASTER_KEY`) only.
 - `config show` redacts secrets.
 - `config test` validates API connectivity and agent approval status.
