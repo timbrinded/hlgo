@@ -156,6 +156,18 @@ func TestWriteError_WrappedCLIError(t *testing.T) {
 	}
 }
 
+func TestWriteError_Nil(t *testing.T) {
+	var buf bytes.Buffer
+	code := WriteError(&buf, nil)
+
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0", code)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("expected no output for nil error, got: %q", buf.String())
+	}
+}
+
 func TestDetailsRoundTrip(t *testing.T) {
 	original := NewCLIError(ErrRateLimit, "slow down").
 		WithDetails("retry_after_ms", float64(5000)).

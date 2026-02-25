@@ -74,6 +74,10 @@ func NewCLIError(code ErrorCode, message string) *CLIError {
 // If err is (or wraps) a *CLIError, its code and details are preserved.
 // Otherwise, the error is wrapped as ErrAPI.
 func WriteError(w io.Writer, err error) int {
+	if err == nil {
+		return 0
+	}
+
 	var cliErr *CLIError
 	if !errors.As(err, &cliErr) {
 		cliErr = NewCLIError(ErrAPI, err.Error())
