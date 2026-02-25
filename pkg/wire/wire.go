@@ -83,10 +83,16 @@ func maxPriceDecimals(szDecimals int, isSpot bool) int {
 //
 // Rules:
 //   - Price must be positive
+//   - szDecimals must be non-negative
 //   - Non-integer prices: max 5 significant figures
 //   - Max decimal places: maxDecimals(isSpot) - szDecimals
 //   - Integer prices always pass sigfig validation
 func ValidatePrice(price decimal.Decimal, szDecimals int, isSpot bool) error {
+	if szDecimals < 0 {
+		return output.NewCLIError(output.ErrValidation, "szDecimals must be non-negative").
+			WithDetails("sz_decimals", szDecimals)
+	}
+
 	if price.LessThanOrEqual(decimal.Zero) {
 		return output.NewCLIError(output.ErrValidation, "price must be positive").
 			WithDetails("value", price.String())
@@ -132,12 +138,20 @@ func PriceToWire(price decimal.Decimal, szDecimals int, isSpot bool) (string, er
 	return price.String(), nil
 }
 
-// SizeToWire formats a size for the Hyperliquid wire protocol.
+// SizeToWire validates and formats a size for the Hyperliquid wire protocol.
 // The size is rounded to szDecimals places and trailing zeros are stripped.
-func SizeToWire(size decimal.Decimal, szDecimals int) string {
+func SizeToWire(size decimal.Decimal, szDecimals int) (string, error) {
+	if szDecimals < 0 {
+		return "", output.NewCLIError(output.ErrValidation, "szDecimals must be non-negative").
+			WithDetails("sz_decimals", szDecimals)
+	}
+	if size.LessThanOrEqual(decimal.Zero) {
+		return "", output.NewCLIError(output.ErrValidation, "size must be positive").
+			WithDetails("value", size.String())
+	}
 	rounded := size.Round(int32(szDecimals))
 	// String() from shopspring/decimal strips trailing zeros by default.
-	return rounded.String()
+	return rounded.String(), nil
 }
 
 // NearestValidPrice snaps a price to the nearest value that passes ValidatePrice.

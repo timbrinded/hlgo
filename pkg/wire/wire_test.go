@@ -240,25 +240,46 @@ func TestSizeToWire(t *testing.T) {
 		size       string
 		szDecimals int
 		want       string
+		wantErr    bool
 	}{
-		{"round_to_2", "1.23456", 2, "1.23"},
-		{"round_to_3", "0.12345", 3, "0.123"},
-		{"round_up", "1.005", 2, "1.01"},
-		{"strip_trailing_zeros", "1.10000", 2, "1.1"},
-		{"integer_result", "5.001", 0, "5"},
-		{"zero_size", "0", 2, "0"},
-		{"large_size", "1000.123456", 4, "1000.1235"},
-		{"no_rounding_needed", "0.5", 4, "0.5"},
-		{"round_to_8_spot", "0.123456789", 8, "0.12345679"},
+		{"round_to_2", "1.23456", 2, "1.23", false},
+		{"round_to_3", "0.12345", 3, "0.123", false},
+		{"round_up", "1.005", 2, "1.01", false},
+		{"strip_trailing_zeros", "1.10000", 2, "1.1", false},
+		{"integer_result", "5.001", 0, "5", false},
+		{"large_size", "1000.123456", 4, "1000.1235", false},
+		{"no_rounding_needed", "0.5", 4, "0.5", false},
+		{"round_to_8_spot", "0.123456789", 8, "0.12345679", false},
+		// Validation errors.
+		{"zero_size", "0", 2, "", true},
+		{"negative_size", "-1.5", 2, "", true},
+		{"negative_szDecimals", "1.5", -1, "", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := SizeToWire(d(tt.size), tt.szDecimals)
-			if got != tt.want {
+			got, err := SizeToWire(d(tt.size), tt.szDecimals)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("SizeToWire(%s, %d) error = %v, wantErr %v", tt.size, tt.szDecimals, err, tt.wantErr)
+			}
+			if !tt.wantErr && got != tt.want {
 				t.Errorf("SizeToWire(%s, %d) = %q, want %q", tt.size, tt.szDecimals, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestValidatePrice_NegativeSzDecimals(t *testing.T) {
+	err := ValidatePrice(d("100"), -1, false)
+	if err == nil {
+		t.Fatal("expected error for negative szDecimals")
+	}
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected *output.CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrValidation {
+		t.Errorf("error code = %s, want %s", cliErr.Code, output.ErrValidation)
 	}
 }
 
