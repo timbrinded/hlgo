@@ -3,7 +3,7 @@ package cmd
 import "github.com/spf13/cobra"
 
 func newInfoCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "info",
 		Short: "Read market and account data from Hyperliquid",
 		Long: `Query the Hyperliquid Info API for market data, order books, trades,
@@ -13,4 +13,23 @@ are read-only and require no wallet configuration.`,
 			return cmd.Help()
 		},
 	}
+
+	cmd.AddCommand(
+		newInfoMidsCmd(),
+		newInfoMetaCmd(),
+		newInfoMetaAndCtxsCmd(),
+		newInfoBookCmd(),
+		newInfoTradesCmd(),
+		newInfoCandlesCmd(),
+		newInfoStateCmd(),
+		newInfoSpotStateCmd(),
+		newInfoOpenOrdersCmd(),
+		newInfoFillsCmd(),
+		newInfoOrderStatusCmd(),
+		newInfoRateLimitCmd(),
+		newInfoFundingCmd(),
+		newInfoPerpDexsCmd(),
+	)
+
+	return cmd
 }
