@@ -31,9 +31,11 @@ const (
 // It is safe for concurrent use, but per SOUL.md the typical lifecycle is
 // create -> call -> discard within a single CLI command.
 type Client struct {
-	baseURL    string
-	httpClient http.Client
-	maxRetries int
+	baseURL       string
+	httpClient    http.Client
+	maxRetries    int
+	weightTracker *WeightTracker
+	warnWriter    io.Writer
 }
 
 // NewClient creates a Client targeting baseURL (e.g. "https://api.hyperliquid.xyz").
@@ -107,6 +109,7 @@ func (c *Client) doPost(ctx context.Context, path string, body any) (json.RawMes
 
 		result, err := c.executeRequest(ctx, url, path, payload)
 		if err == nil {
+			c.recordWeight(path, payload)
 			return result, nil
 		}
 
@@ -196,4 +199,35 @@ func (e *retryableError) Unwrap() error { return e.err }
 func isRetryable(err error) bool {
 	var re *retryableError
 	return errors.As(err, &re)
+}
+
+// recordWeight records API weight and emits a warning if approaching the limit.
+func (c *Client) recordWeight(path string, payload []byte) {
+	if c.weightTracker == nil {
+		return
+	}
+
+	var weight int
+	switch path {
+	case "/info":
+		var req struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(payload, &req) == nil {
+			weight = WeightForInfoType(req.Type)
+		}
+	case "/exchange":
+		weight = WeightForExchangeBatch(1)
+	}
+
+	if weight > 0 {
+		c.weightTracker.Record(weight)
+	}
+
+	if c.warnWriter != nil && c.weightTracker.ShouldWarn() {
+		if warning := c.weightTracker.WarningJSON(); warning != nil {
+			//nolint:errcheck // best-effort warning; stderr write failure is non-fatal
+			c.warnWriter.Write(append(warning, '\n'))
+		}
+	}
 }
