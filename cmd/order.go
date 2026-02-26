@@ -3,7 +3,7 @@ package cmd
 import "github.com/spf13/cobra"
 
 func newOrderCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "order",
 		Short: "Place, cancel, and manage orders",
 		Long: `Submit limit and market orders, cancel by OID or CLOID, modify existing
@@ -13,4 +13,13 @@ wallet via the L1 phantom agent path.`,
 			return cmd.Help()
 		},
 	}
+
+	cmd.AddCommand(
+		newOrderPlaceCmd(),
+		newOrderMarketCmd(),
+		newOrderCancelCmd(),
+		newOrderCancelAllCmd(),
+	)
+
+	return cmd
 }

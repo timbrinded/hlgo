@@ -1,0 +1,175 @@
+package cmd
+
+import (
+	"strconv"
+
+	"github.com/spf13/cobra"
+
+	"github.com/timbrinded/hlgo/pkg/client"
+	"github.com/timbrinded/hlgo/pkg/config"
+	"github.com/timbrinded/hlgo/pkg/exchange"
+	"github.com/timbrinded/hlgo/pkg/info"
+	"github.com/timbrinded/hlgo/pkg/output"
+	"github.com/timbrinded/hlgo/pkg/resolver"
+)
+
+func newOrderCancelCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "cancel",
+		Short: "Cancel an order by OID or CLOID",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cfg := config.FromContext(cmd.Context())
+			coin, _ := cmd.Flags().GetString("coin")      //nolint:errcheck // known flag
+			oidStr, _ := cmd.Flags().GetString("oid")     //nolint:errcheck // known flag
+			cloidStr, _ := cmd.Flags().GetString("cloid") //nolint:errcheck // known flag
+			vault, _ := cmd.Flags().GetString("vault")    //nolint:errcheck // known flag
+
+			// Mutual exclusion: exactly one of --oid or --cloid.
+			if oidStr == "" && cloidStr == "" {
+				return output.NewCLIError(output.ErrValidation, "one of --oid or --cloid is required")
+			}
+			if oidStr != "" && cloidStr != "" {
+				return output.NewCLIError(output.ErrValidation, "--oid and --cloid are mutually exclusive")
+			}
+
+			exec, err := buildExecutor(cfg)
+			if err != nil {
+				return err
+			}
+
+			if cloidStr != "" {
+				// Cancel by CLOID — resolve coin to asset ID.
+				assetID, err := resolveAssetID(cmd, cfg, coin)
+				if err != nil {
+					return err
+				}
+
+				result, err := exec.CancelByCloid(cmd.Context(), []exchange.CancelByCloidWire{
+					{Asset: assetID, Cloid: cloidStr},
+				}, vault, cfg.DryRun)
+				if err != nil {
+					return err
+				}
+				return printResult(cmd, cfg, result, nil)
+			}
+
+			// Cancel by OID.
+			oid, err := strconv.ParseInt(oidStr, 10, 64)
+			if err != nil {
+				return output.NewCLIError(output.ErrValidation, "invalid OID: must be numeric").
+					WithDetails("value", oidStr)
+			}
+
+			assetID, err := resolveAssetID(cmd, cfg, coin)
+			if err != nil {
+				return err
+			}
+
+			result, err := exec.CancelOrders(cmd.Context(), []exchange.CancelWire{
+				{A: assetID, O: oid},
+			}, vault, cfg.DryRun)
+			if err != nil {
+				return err
+			}
+			return printResult(cmd, cfg, result, nil)
+		},
+	}
+
+	cmd.Flags().String("coin", "", "coin name (required for asset ID resolution)")
+	cmd.Flags().String("oid", "", "order ID to cancel")
+	cmd.Flags().String("cloid", "", "client order ID to cancel")
+	cmd.Flags().String("vault", "", "vault address")
+
+	//nolint:errcheck // MarkFlagRequired on known flags never fails
+	cmd.MarkFlagRequired("coin")
+
+	return cmd
+}
+
+func newOrderCancelAllCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "cancel-all",
+		Short: "Cancel all open orders (optionally for a specific coin)",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cfg := config.FromContext(cmd.Context())
+			coin, _ := cmd.Flags().GetString("coin")   //nolint:errcheck // known flag
+			vault, _ := cmd.Flags().GetString("vault") //nolint:errcheck // known flag
+
+			// Resolve user address for fetching open orders.
+			addr, err := info.ResolveUserAddress("", cfg)
+			if err != nil {
+				return err
+			}
+
+			// Fetch all open orders.
+			ic := buildInfoClient(cfg)
+			raw, err := ic.FrontendOpenOrders(cmd.Context(), addr, cfg.Dex)
+			if err != nil {
+				return err
+			}
+
+			orders, err := info.ParseOpenOrdersResult(raw)
+			if err != nil {
+				return err
+			}
+
+			if len(orders) == 0 {
+				return printResult(cmd, cfg, mustMarshal(map[string]string{
+					"status": "ok", "message": "no open orders to cancel",
+				}), nil)
+			}
+
+			exec, err := buildExecutor(cfg)
+			if err != nil {
+				return err
+			}
+
+			// Build cancel list, optionally filtered by coin.
+			var cancels []exchange.CancelWire
+			for _, o := range orders {
+				if coin != "" && o.Coin != coin {
+					continue
+				}
+				assetID, err := resolveAssetID(cmd, cfg, o.Coin)
+				if err != nil {
+					return err
+				}
+				cancels = append(cancels, exchange.CancelWire{A: assetID, O: o.Oid})
+			}
+
+			if len(cancels) == 0 {
+				return printResult(cmd, cfg, mustMarshal(map[string]string{
+					"status": "ok", "message": "no matching orders to cancel",
+				}), nil)
+			}
+
+			result, err := exec.CancelOrders(cmd.Context(), cancels, vault, cfg.DryRun)
+			if err != nil {
+				return err
+			}
+			return printResult(cmd, cfg, result, nil)
+		},
+	}
+
+	cmd.Flags().String("coin", "", "only cancel orders for this coin")
+	cmd.Flags().String("vault", "", "vault address")
+
+	return cmd
+}
+
+// resolveAssetID resolves a coin name to its integer asset ID.
+func resolveAssetID(cmd *cobra.Command, cfg *config.Config, coin string) (int, error) {
+	c := buildHTTPClient(cfg)
+	cacheDir := resolveCacheDir(cfg)
+	r := resolver.NewResolver(c, cacheDir, 0)
+	info, err := r.ResolveAsset(cmd.Context(), coin)
+	if err != nil {
+		return 0, err
+	}
+	return info.AssetID, nil
+}
+
+// buildHTTPClient creates a raw HTTP client for the current config.
+func buildHTTPClient(cfg *config.Config) *client.Client {
+	return client.NewClient(baseURL(cfg))
+}
