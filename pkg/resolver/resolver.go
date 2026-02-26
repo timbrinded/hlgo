@@ -204,11 +204,7 @@ func (r *CachingResolver) ensureLoaded(ctx context.Context) error {
 
 // fetchMeta sends a typed info request and returns the raw JSON bytes.
 func (r *CachingResolver) fetchMeta(ctx context.Context, metaType string) ([]byte, error) {
-	raw, err := r.client.PostInfo(ctx, map[string]string{"type": metaType})
-	if err != nil {
-		return nil, err
-	}
-	return raw, nil
+	return r.client.PostInfo(ctx, map[string]string{"type": metaType})
 }
 
 // buildMaps parses perp and spot metadata and populates the lookup maps.

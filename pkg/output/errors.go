@@ -19,17 +19,6 @@ const (
 	ErrConfig     ErrorCode = "CONFIG_ERROR"
 )
 
-// exitCodes maps each ErrorCode to a distinct process exit code.
-// Agents can branch on exit codes without parsing stderr JSON.
-var exitCodes = map[ErrorCode]int{
-	ErrValidation: 1,
-	ErrConfig:     2,
-	ErrNetwork:    3,
-	ErrAPI:        4,
-	ErrSigning:    5,
-	ErrRateLimit:  6,
-}
-
 // CLIError is the structured error type returned by all hlgo commands.
 // It serializes to JSON on stderr per SOUL.md: {"error": "...", "code": "...", "details": {...}}.
 type CLIError struct {
@@ -46,10 +35,22 @@ func (e *CLIError) Error() string {
 // ExitCode returns the process exit code for this error's code.
 // Unknown codes default to 1.
 func (e *CLIError) ExitCode() int {
-	if code, ok := exitCodes[e.Code]; ok {
-		return code
+	switch e.Code {
+	case ErrValidation:
+		return 1
+	case ErrConfig:
+		return 2
+	case ErrNetwork:
+		return 3
+	case ErrAPI:
+		return 4
+	case ErrSigning:
+		return 5
+	case ErrRateLimit:
+		return 6
+	default:
+		return 1
 	}
-	return 1
 }
 
 // WithDetails adds a key-value pair to the error's details map.
