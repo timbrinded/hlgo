@@ -98,7 +98,7 @@ func (wt *WeightTracker) WarningJSON() json.RawMessage {
 		"limit":            wt.limit,
 		"window_remaining": fmt.Sprintf("%.0fs", remaining.Seconds()),
 	}
-	data, _ := json.Marshal(msg)
+	data, _ := json.Marshal(msg) //nolint:errcheck // msg is a fixed-shape map, cannot fail
 	return data
 }
 

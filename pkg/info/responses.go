@@ -90,13 +90,13 @@ func (b *BookResult) Rows() [][]string {
 
 // Trade represents a single recent trade.
 type Trade struct {
-	Coin  string `json:"coin"`
-	Side  string `json:"side"`
-	Px    string `json:"px"`
-	Sz    string `json:"sz"`
-	Time  int64  `json:"time"`
-	Hash  string `json:"hash"`
-	Tid   int64  `json:"tid"`
+	Coin string `json:"coin"`
+	Side string `json:"side"`
+	Px   string `json:"px"`
+	Sz   string `json:"sz"`
+	Time int64  `json:"time"`
+	Hash string `json:"hash"`
+	Tid  int64  `json:"tid"`
 }
 
 // TradesResult is a list of recent trades.
@@ -163,12 +163,12 @@ func (c CandlesResult) Rows() [][]string {
 
 // Position represents a single perp position in clearinghouse state.
 type Position struct {
-	Coin     string `json:"coin"`
-	Szi      string `json:"szi"`
-	EntryPx  string `json:"entryPx"`
+	Coin          string `json:"coin"`
+	Szi           string `json:"szi"`
+	EntryPx       string `json:"entryPx"`
 	UnrealizedPnl string `json:"unrealizedPnl"`
 	LiquidationPx string `json:"liquidationPx,omitempty"`
-	Leverage struct {
+	Leverage      struct {
 		Type  string `json:"type"`
 		Value int    `json:"value"`
 	} `json:"leverage"`
@@ -253,15 +253,15 @@ func (o OpenOrdersResult) Rows() [][]string {
 
 // Fill represents a single trade fill.
 type Fill struct {
-	Coin      string `json:"coin"`
-	Side      string `json:"side"`
-	Px        string `json:"px"`
-	Sz        string `json:"sz"`
-	Time      int64  `json:"time"`
-	Fee       string `json:"fee"`
-	Oid       int64  `json:"oid"`
+	Coin          string `json:"coin"`
+	Side          string `json:"side"`
+	Px            string `json:"px"`
+	Sz            string `json:"sz"`
+	Time          int64  `json:"time"`
+	Fee           string `json:"fee"`
+	Oid           int64  `json:"oid"`
 	StartPosition string `json:"startPosition"`
-	ClosedPnl string `json:"closedPnl"`
+	ClosedPnl     string `json:"closedPnl"`
 }
 
 // FillsResult is a list of fills.
@@ -327,9 +327,9 @@ func (f FundingResult) Rows() [][]string {
 
 // PredictedFunding represents a single predicted funding entry.
 type PredictedFunding struct {
-	Coin    string `json:"coin"`
-	Venue   string `json:"venue"`
-	Rate    string `json:"rate"`
+	Coin  string `json:"coin"`
+	Venue string `json:"venue"`
+	Rate  string `json:"rate"`
 }
 
 // PredictedFundingsResult wraps the predicted fundings response.

@@ -21,9 +21,9 @@ type MetaAndCtxsRequest struct {
 
 // L2BookRequest fetches the L2 order book for a coin.
 type L2BookRequest struct {
-	Type    string `json:"type"`
-	Coin    string `json:"coin"`
-	NSigFigs *int  `json:"nSigFigs,omitempty"`
+	Type     string `json:"type"`
+	Coin     string `json:"coin"`
+	NSigFigs *int   `json:"nSigFigs,omitempty"`
 }
 
 // RecentTradesRequest fetches recent trades for a coin.

@@ -22,7 +22,7 @@ func TestResolveUserAddress_ExplicitInvalid(t *testing.T) {
 	tests := []string{
 		"not-an-address",
 		"0x123",
-		"14791697260E4c9A71f18484C9f997B308e59325", // missing 0x
+		"14791697260E4c9A71f18484C9f997B308e59325",   // missing 0x
 		"0xGGGG1697260E4c9A71f18484C9f997B308e59325", // invalid hex
 	}
 	for _, addr := range tests {

@@ -23,12 +23,12 @@ type OrderTypeWire struct {
 // OrderWire is the wire-format representation of a single order.
 // Field names are abbreviated to match the Hyperliquid protocol.
 type OrderWire struct {
-	A int           `msgpack:"a" json:"a"` // asset ID
-	B bool          `msgpack:"b" json:"b"` // is buy
-	P string        `msgpack:"p" json:"p"` // price
-	S string        `msgpack:"s" json:"s"` // size
-	R bool          `msgpack:"r" json:"r"` // reduce only
-	T OrderTypeWire `msgpack:"t" json:"t"` // order type
+	A int           `msgpack:"a" json:"a"`                     // asset ID
+	B bool          `msgpack:"b" json:"b"`                     // is buy
+	P string        `msgpack:"p" json:"p"`                     // price
+	S string        `msgpack:"s" json:"s"`                     // size
+	R bool          `msgpack:"r" json:"r"`                     // reduce only
+	T OrderTypeWire `msgpack:"t" json:"t"`                     // order type
 	C *string       `msgpack:"c,omitempty" json:"c,omitempty"` // client order ID
 }
 

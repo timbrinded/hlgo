@@ -7,7 +7,7 @@ type OrderParams struct {
 	Price      string // already wire-formatted via wire.PriceToWire
 	Size       string // already wire-formatted via wire.SizeToWire
 	ReduceOnly bool
-	Tif        string  // "Gtc", "Ioc", "Alo"
+	Tif        string // "Gtc", "Ioc", "Alo"
 	Cloid      *string
 }
 
