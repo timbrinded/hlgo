@@ -2,12 +2,13 @@ package signer
 
 import (
 	"encoding/binary"
-	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 	"github.com/vmihailenco/msgpack/v5"
+
+	"github.com/timbrinded/hlgo/pkg/output"
 )
 
 // phantomAgentType defines the EIP-712 type for the phantom Agent struct.
@@ -26,7 +27,8 @@ var phantomAgentType = []apitypes.Type{
 func buildConnectionID(action any, nonce int64, vaultAddress *common.Address) (common.Hash, error) {
 	encoded, err := msgpack.Marshal(action)
 	if err != nil {
-		return common.Hash{}, fmt.Errorf("msgpack encoding action: %w", err)
+		return common.Hash{}, output.NewCLIError(output.ErrSigning, "failed to msgpack-encode action").
+			WithDetails("cause", err.Error())
 	}
 
 	// Nonce: 8 bytes, big-endian, unsigned interpretation of the int64.

@@ -126,6 +126,9 @@ func TestResolveKnownPerpCoin(t *testing.T) {
 	if info.IsSpot {
 		t.Error("IsSpot = true, want false")
 	}
+	if info.Passthrough {
+		t.Error("Passthrough = true, want false for named coin")
+	}
 }
 
 func TestResolveKnownPerpCoin_BTC(t *testing.T) {
@@ -255,6 +258,9 @@ func TestNumericPassthrough(t *testing.T) {
 	}
 	if info.IsSpot {
 		t.Error("IsSpot = true, want false for numeric passthrough")
+	}
+	if !info.Passthrough {
+		t.Error("Passthrough = false, want true for numeric passthrough")
 	}
 }
 

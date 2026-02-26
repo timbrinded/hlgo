@@ -24,7 +24,7 @@ jobs:
           cache: true
 
       - name: Vet
-        run: go vet ./...
+        run: make vet
 
       - name: Lint
         uses: golangci/golangci-lint-action@v9
@@ -33,7 +33,7 @@ jobs:
           install-mode: goinstall
 
       - name: Test
-        run: go test -race -count=1 ./...
+        run: make test
 
   integration:
     name: Integration tests
@@ -53,4 +53,4 @@ jobs:
           HL_TESTNET: "true"
           HL_TEST_AGENT_KEY: ${{ secrets.HL_TEST_AGENT_KEY }}
           HL_TEST_MASTER_KEY: ${{ secrets.HL_TEST_MASTER_KEY }}
-        run: go test -tags=integration -race -count=1 -timeout=5m ./...
+        run: make test-integration

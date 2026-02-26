@@ -1,27 +1,47 @@
 # hlgo Makefile
 # Default target chains fmt → vet → build so you can never build unformatted code.
+SHELL := /bin/bash
 
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS  := -s -w -X main.version=$(VERSION)
 BIN_DIR  := bin
 DIST_DIR := dist
+TEST_OUT := /tmp/hlgo-test.out
 
-.PHONY: build test test-cover vet fmt lint tidy check clean install \
+.PHONY: build test test-cover test-integration vet fmt lint tidy check clean install \
         build-linux build-darwin build-windows dist
+
+# run-tests: shared recipe for running go test with summary.
+# Usage: $(call run-tests,<extra go test flags>)
+define run-tests
+	@go test -v -race -count=1 $(1) ./... 2>&1 | tee $(TEST_OUT); \
+	status=$${PIPESTATUS[0]}; \
+	echo ""; \
+	echo "──────────────────────────────────────────"; \
+	pass=$$(grep -c '^--- PASS' $(TEST_OUT) || true); \
+	fail=$$(grep -c '^--- FAIL' $(TEST_OUT) || true); \
+	echo "Tests: $$pass passed, $$fail failed"; \
+	echo "──────────────────────────────────────────"; \
+	exit $$status
+endef
 
 ## build (default): fmt → vet → compile
 build: fmt vet
 	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/hlgo .
 
-## test: run all tests with race detector
+## test: run all tests with race detector (verbose output + summary)
 test:
-	go test -race -count=1 ./...
+	$(call run-tests,)
 
 ## test-cover: test with coverage report
 test-cover:
-	go test -race -count=1 -coverprofile=coverage.out ./...
-	go tool cover -html=coverage.out -o coverage.html
+	$(call run-tests,-coverprofile=coverage.out)
+	@go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report: coverage.html"
+
+## test-integration: run integration tests (requires testnet env vars)
+test-integration:
+	$(call run-tests,-tags=integration -timeout=5m)
 
 ## vet: static analysis
 vet:

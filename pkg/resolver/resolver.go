@@ -31,11 +31,16 @@ type Resolver interface {
 }
 
 // AssetInfo contains the resolved asset metadata.
+//
+// When Passthrough is true, the asset was resolved from a raw numeric ID string.
+// In this case SzDecimals and IsSpot are zero-value defaults — callers must supply
+// their own metadata for wire formatting and market-type decisions.
 type AssetInfo struct {
-	AssetID    int
-	Coin       string
-	SzDecimals int
-	IsSpot     bool
+	AssetID     int
+	Coin        string
+	SzDecimals  int
+	IsSpot      bool
+	Passthrough bool // true when resolved from a numeric ID string (metadata unknown)
 }
 
 // perpMeta is the response shape from POST /info {"type":"meta"}.
@@ -98,12 +103,15 @@ func NewResolver(c InfoFetcher, cacheDir string, ttl time.Duration) *CachingReso
 // passed through directly. All coin name comparisons are case-insensitive.
 func (r *CachingResolver) ResolveAsset(ctx context.Context, coin string) (*AssetInfo, error) {
 	// Numeric passthrough: "1" → asset ID 1.
+	// Callers must check Passthrough and supply their own SzDecimals/IsSpot
+	// for wire formatting — these defaults are not authoritative.
 	if id, err := strconv.Atoi(coin); err == nil {
 		return &AssetInfo{
-			AssetID:    id,
-			Coin:       coin,
-			SzDecimals: 0,
-			IsSpot:     false,
+			AssetID:     id,
+			Coin:        coin,
+			SzDecimals:  0,
+			IsSpot:      false,
+			Passthrough: true,
 		}, nil
 	}
 
@@ -128,7 +136,13 @@ func (r *CachingResolver) ResolveAsset(ctx context.Context, coin string) (*Asset
 		WithDetails("hint", "use a valid coin name (e.g. BTC, ETH) or a numeric asset ID")
 }
 
-// ensureLoaded loads metadata from cache or API if not already loaded or expired.
+// ensureLoaded loads metadata from cache or API if not already loaded.
+//
+// Once loaded is set, metadata is served from memory for the lifetime of this
+// resolver instance. Per SOUL.md "Stateless Simplicity", the typical lifecycle
+// is create → resolve → discard within a single CLI command, so TTL re-checking
+// is unnecessary. If this resolver is ever reused across long-running contexts,
+// this assumption would need revisiting.
 func (r *CachingResolver) ensureLoaded(ctx context.Context) error {
 	r.mu.RLock()
 	if r.loaded {

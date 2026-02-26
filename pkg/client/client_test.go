@@ -415,7 +415,7 @@ func TestWithRetries_NegativeClampedToZero(t *testing.T) {
 	}
 }
 
-func TestPostInfo_429_NotRetried(t *testing.T) {
+func TestPostInfo_429_Retried(t *testing.T) {
 	var callCount atomic.Int32
 
 	srv := newTestServer(func(w http.ResponseWriter, _ *http.Request) {
@@ -425,15 +425,57 @@ func TestPostInfo_429_NotRetried(t *testing.T) {
 	})
 	defer srv.Close()
 
-	c := NewClient(srv.URL, WithRetries(3))
+	maxRetries := 2
+	c := NewClient(srv.URL, WithRetries(maxRetries))
 	_, err := c.PostInfo(context.Background(), map[string]string{"type": "allMids"})
 	if err == nil {
 		t.Fatal("expected error for 429")
 	}
 
-	// 429 is a 4xx, should NOT be retried.
-	if got := callCount.Load(); got != 1 {
-		t.Errorf("429 was called %d times, want exactly 1 (no retries)", got)
+	// 429 is transient — should be retried like 5xx.
+	expectedCalls := int32(1 + maxRetries)
+	if got := callCount.Load(); got != expectedCalls {
+		t.Errorf("429 was called %d times, want %d (1 initial + %d retries)", got, expectedCalls, maxRetries)
+	}
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected *output.CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrRateLimit {
+		t.Errorf("error code = %s, want %s", cliErr.Code, output.ErrRateLimit)
+	}
+}
+
+func TestPostInfo_429_ThenSuccess(t *testing.T) {
+	var callCount atomic.Int32
+
+	srv := newTestServer(func(w http.ResponseWriter, _ *http.Request) {
+		n := callCount.Add(1)
+		if n <= 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			fmt.Fprint(w, `rate limited`)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"recovered":true}`)
+	})
+	defer srv.Close()
+
+	c := NewClient(srv.URL, WithRetries(2))
+	result, err := c.PostInfo(context.Background(), map[string]string{"type": "allMids"})
+	if err != nil {
+		t.Fatalf("expected success after retry, got error: %v", err)
+	}
+
+	var data map[string]bool
+	json.Unmarshal(result, &data)
+	if !data["recovered"] {
+		t.Error("expected recovered=true in response")
+	}
+
+	if got := callCount.Load(); got != 2 {
+		t.Errorf("call count = %d, want 2 (1 rate-limit + 1 success)", got)
 	}
 }
 

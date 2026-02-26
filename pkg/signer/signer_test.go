@@ -1,12 +1,15 @@
 package signer
 
 import (
+	"errors"
 	"math/big"
 	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
+
+	"github.com/timbrinded/hlgo/pkg/output"
 )
 
 // testPrivateKey is a deterministic test key. DO NOT use in production.
@@ -76,12 +79,26 @@ func TestNewSigner(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for invalid key")
 		}
+		var cliErr *output.CLIError
+		if !errors.As(err, &cliErr) {
+			t.Fatalf("expected *output.CLIError, got %T", err)
+		}
+		if cliErr.Code != output.ErrConfig {
+			t.Errorf("error code = %s, want %s", cliErr.Code, output.ErrConfig)
+		}
 	})
 
 	t.Run("empty key", func(t *testing.T) {
 		_, err := NewSigner("")
 		if err == nil {
 			t.Fatal("expected error for empty key")
+		}
+		var cliErr *output.CLIError
+		if !errors.As(err, &cliErr) {
+			t.Fatalf("expected *output.CLIError, got %T", err)
+		}
+		if cliErr.Code != output.ErrConfig {
+			t.Errorf("error code = %s, want %s", cliErr.Code, output.ErrConfig)
 		}
 	})
 }

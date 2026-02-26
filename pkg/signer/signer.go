@@ -4,12 +4,13 @@ package signer
 import (
 	"crypto/ecdsa"
 	"encoding/hex"
-	"fmt"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
+
+	"github.com/timbrinded/hlgo/pkg/output"
 )
 
 // Signer signs actions for the Hyperliquid exchange.
@@ -56,7 +57,8 @@ func NewSigner(privateKeyHex string) (*LocalSigner, error) {
 	key, err := crypto.HexToECDSA(cleaned)
 	if err != nil {
 		// Never include the key material in the error message.
-		return nil, fmt.Errorf("invalid private key: %w", err)
+		return nil, output.NewCLIError(output.ErrConfig, "invalid private key format").
+			WithDetails("cause", err.Error())
 	}
 
 	address := crypto.PubkeyToAddress(key.PublicKey)
@@ -84,7 +86,7 @@ func (s *LocalSigner) Address() common.Address {
 func (s *LocalSigner) SignL1Action(action any, nonce int64, vaultAddress *common.Address, isMainnet bool) (*Signature, error) {
 	connectionID, err := buildConnectionID(action, nonce, vaultAddress)
 	if err != nil {
-		return nil, fmt.Errorf("building connection ID: %w", err)
+		return nil, err // already a structured CLIError from buildConnectionID
 	}
 
 	source := "b" // testnet
@@ -113,13 +115,15 @@ func (s *LocalSigner) SignUserAction(typeName string, typeFields []apitypes.Type
 func signTypedData(key *ecdsa.PrivateKey, typedData apitypes.TypedData) (*Signature, error) {
 	hash, _, err := apitypes.TypedDataAndHash(typedData)
 	if err != nil {
-		return nil, fmt.Errorf("hashing typed data: %w", err)
+		return nil, output.NewCLIError(output.ErrSigning, "failed to hash typed data").
+			WithDetails("cause", err.Error())
 	}
 
 	// crypto.Sign returns 65 bytes: [R(32) || S(32) || V(1)] where V is 0 or 1.
 	sigBytes, err := crypto.Sign(hash, key)
 	if err != nil {
-		return nil, fmt.Errorf("signing: %w", err)
+		return nil, output.NewCLIError(output.ErrSigning, "ECDSA signing failed").
+			WithDetails("cause", err.Error())
 	}
 
 	var sig Signature

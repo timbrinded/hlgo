@@ -2,7 +2,8 @@
 //
 // All requests are POST with JSON bodies. Responses are decoded with
 // json.Decoder.UseNumber() to preserve financial precision (never float64).
-// Transient 5xx errors are retried with quadratic backoff; 4xx errors fail immediately.
+// Transient errors (5xx and 429 rate limits) are retried with quadratic backoff;
+// other 4xx errors fail immediately.
 package client
 
 import (
@@ -109,7 +110,7 @@ func (c *Client) doPost(ctx context.Context, path string, body any) (json.RawMes
 			return result, nil
 		}
 
-		// Only retry on 5xx; everything else fails immediately.
+		// Only retry on transient errors (5xx, 429); other 4xx fail immediately.
 		if !isRetryable(err) {
 			return nil, err
 		}
@@ -147,9 +148,11 @@ func (c *Client) executeRequest(ctx context.Context, url, path string, payload [
 	}
 
 	if resp.StatusCode == http.StatusTooManyRequests {
-		return nil, output.NewCLIError(output.ErrRateLimit, "rate limited by API").
-			WithDetails("path", path).
-			WithDetails("status_code", resp.StatusCode)
+		return nil, &retryableError{
+			err: output.NewCLIError(output.ErrRateLimit, "rate limited by API").
+				WithDetails("path", path).
+				WithDetails("status_code", resp.StatusCode),
+		}
 	}
 
 	if resp.StatusCode >= 400 && resp.StatusCode < 500 {
