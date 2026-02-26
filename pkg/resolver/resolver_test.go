@@ -292,6 +292,68 @@ func TestNumericPassthrough_LargeID(t *testing.T) {
 	}
 }
 
+func TestNumericPassthrough_NegativeID_Rejected(t *testing.T) {
+	c := client.NewClient("http://127.0.0.1:1")
+	r := NewResolver(c, t.TempDir(), 5*time.Minute)
+	ctx := context.Background()
+
+	_, err := r.ResolveAsset(ctx, "-1")
+	if err == nil {
+		t.Fatal("expected error for negative asset ID")
+	}
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected *output.CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrValidation {
+		t.Errorf("error code = %s, want %s", cliErr.Code, output.ErrValidation)
+	}
+}
+
+func TestNumericPassthrough_WhitespaceTrimmed(t *testing.T) {
+	c := client.NewClient("http://127.0.0.1:1")
+	r := NewResolver(c, t.TempDir(), 5*time.Minute)
+	ctx := context.Background()
+
+	info, err := r.ResolveAsset(ctx, " 42 ")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.AssetID != 42 {
+		t.Errorf("AssetID = %d, want 42", info.AssetID)
+	}
+	if info.Coin != "42" {
+		t.Errorf("Coin = %q, want %q (trimmed)", info.Coin, "42")
+	}
+}
+
+func TestResolveSpotByMarketName(t *testing.T) {
+	r := newPreloadedResolver(t)
+	ctx := context.Background()
+
+	// Resolve by market name "PURR/USDC" should return same info as "PURR".
+	info, err := r.ResolveAsset(ctx, "PURR/USDC")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.AssetID != 10001 {
+		t.Errorf("AssetID = %d, want 10001", info.AssetID)
+	}
+	if !info.IsSpot {
+		t.Error("IsSpot = false, want true")
+	}
+
+	// Case-insensitive market name.
+	info2, err := r.ResolveAsset(ctx, "hfun/usdc")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info2.AssetID != 10002 {
+		t.Errorf("AssetID = %d, want 10002", info2.AssetID)
+	}
+}
+
 func TestUnknownCoin_ReturnsValidationError(t *testing.T) {
 	r := newPreloadedResolver(t)
 	ctx := context.Background()

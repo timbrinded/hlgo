@@ -105,14 +105,21 @@ func (r *CachingResolver) ResolveAsset(ctx context.Context, coin string) (*Asset
 	// Numeric passthrough: "1" → asset ID 1.
 	// Callers must check Passthrough and supply their own SzDecimals/IsSpot
 	// for wire formatting — these defaults are not authoritative.
-	if id, err := strconv.Atoi(coin); err == nil {
-		return &AssetInfo{
-			AssetID:     id,
-			Coin:        coin,
-			SzDecimals:  0,
-			IsSpot:      false,
-			Passthrough: true,
-		}, nil
+	if trimmed := strings.TrimSpace(coin); trimmed != "" {
+		if id, err := strconv.Atoi(trimmed); err == nil {
+			if id < 0 {
+				return nil, output.NewCLIError(output.ErrValidation, "invalid numeric asset ID: must be non-negative").
+					WithDetails("coin", coin).
+					WithDetails("hint", "use a non-negative numeric asset ID or a valid coin name (e.g. BTC, ETH)")
+			}
+			return &AssetInfo{
+				AssetID:     id,
+				Coin:        trimmed,
+				SzDecimals:  0,
+				IsSpot:      false,
+				Passthrough: true,
+			}, nil
+		}
 	}
 
 	if err := r.ensureLoaded(ctx); err != nil {
@@ -236,13 +243,17 @@ func (r *CachingResolver) buildMaps(perpData, spotData []byte) error {
 		}
 		// The first token is the base token of the spot pair.
 		token := market.Tokens[0]
-		upper := strings.ToUpper(token.Name)
-		spotMap[upper] = &AssetInfo{
+		info := &AssetInfo{
 			AssetID:    10000 + token.Index, // spot asset ID = 10000 + index
 			Coin:       token.Name,
 			SzDecimals: token.SzDecimals,
 			IsSpot:     true,
 		}
+		// Allow resolution by both base token ("PURR") and full market name ("PURR/USDC").
+		baseKey := strings.ToUpper(token.Name)
+		spotMap[baseKey] = info
+		marketKey := strings.ToUpper(market.Name)
+		spotMap[marketKey] = info
 	}
 
 	r.perpMap = perpMap

@@ -29,7 +29,7 @@ func TestCountSigFigs(t *testing.T) {
 		{"integer_100k", "100000", 6},
 		{"decimal_eth", "3412.1", 5},
 		{"decimal_small", "0.00001234", 4},
-		{"decimal_five_sigfig", "95123.5", 6},
+		{"decimal_six_sigfig", "95123.5", 6},
 		{"decimal_one_sigfig", "0.003", 1},
 		{"decimal_two_sigfig", "0.0012", 2},
 		{"negative_value", "-3412.1", 5},
