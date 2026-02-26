@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -190,18 +192,14 @@ func newConfigTestCmd() *cobra.Command {
 				"config_readable":    configFile != "" && err == nil,
 				"agent_key_env_set":  false,
 				"master_key_env_set": false,
-				"connectivity": map[string]string{
-					"status": "skipped",
-					"reason": "http client not implemented",
-				},
-				"agent_approved": map[string]string{
-					"status": "skipped",
-					"reason": "http client not implemented",
-				},
 			}
 
 			if err != nil {
 				result["config_error"] = err.Error()
+				result["connectivity"] = map[string]string{
+					"status": "skipped",
+					"reason": "config not readable",
+				}
 				if out, merr := json.MarshalIndent(result, "", "  "); merr == nil {
 					if _, werr := fmt.Fprintln(cmd.OutOrStdout(), string(out)); werr != nil {
 						return werr
@@ -214,6 +212,32 @@ func newConfigTestCmd() *cobra.Command {
 			masterKeySet := cfg.MasterKeyEnv != "" && os.Getenv(cfg.MasterKeyEnv) != ""
 			result["agent_key_env_set"] = agentKeySet
 			result["master_key_env_set"] = masterKeySet
+
+			// Test connectivity by fetching mid prices.
+			ic := buildInfoClient(cfg)
+			ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+			defer cancel()
+
+			raw, cerr := ic.AllMids(ctx, cfg.Dex)
+			if cerr != nil {
+				result["connectivity"] = map[string]string{
+					"status": "failed",
+					"error":  cerr.Error(),
+				}
+			} else {
+				// Count coins to give useful feedback.
+				var mids map[string]string
+				if jerr := json.Unmarshal(raw, &mids); jerr == nil {
+					result["connectivity"] = map[string]any{
+						"status": "ok",
+						"coins":  len(mids),
+					}
+				} else {
+					result["connectivity"] = map[string]string{
+						"status": "ok",
+					}
+				}
+			}
 
 			out, err := json.MarshalIndent(result, "", "  ")
 			if err != nil {

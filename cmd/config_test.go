@@ -3,6 +3,9 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -157,6 +160,13 @@ func TestConfigShow_Output(t *testing.T) {
 }
 
 func TestConfigTest_AllGood(t *testing.T) {
+	// Mock server returning valid mids JSON.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"BTC":"95000","ETH":"3400"}`)
+	}))
+	defer srv.Close()
+	t.Setenv("HLGO_API_URL", srv.URL)
+
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
 	os.WriteFile(cfgPath, []byte("agent_key_env: TEST_KEY\n"), 0600)
@@ -180,6 +190,17 @@ func TestConfigTest_AllGood(t *testing.T) {
 	}
 	if out["agent_key_env_set"] != true {
 		t.Error("agent_key_env_set should be true")
+	}
+
+	conn, ok := out["connectivity"].(map[string]any)
+	if !ok {
+		t.Fatal("connectivity field missing or not a map")
+	}
+	if conn["status"] != "ok" {
+		t.Errorf("connectivity status = %v, want ok", conn["status"])
+	}
+	if coins, ok := conn["coins"].(float64); !ok || coins < 1 {
+		t.Errorf("connectivity coins = %v, want >= 1", conn["coins"])
 	}
 }
 
@@ -206,6 +227,12 @@ func TestConfigTest_NoFileReportsNotReadable(t *testing.T) {
 }
 
 func TestConfigTest_MissingEnvVar(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"BTC":"95000"}`)
+	}))
+	defer srv.Close()
+	t.Setenv("HLGO_API_URL", srv.URL)
+
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
 	os.WriteFile(cfgPath, []byte("agent_key_env: DEFINITELY_NOT_SET_XYZ\n"), 0600)
