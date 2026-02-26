@@ -88,4 +88,12 @@ func bindEnvVars(v *viper.Viper, cmd *cobra.Command) {
 			panic(fmt.Sprintf("bind flag %s: %v", flag, err))
 		}
 	}
+
+	// Flag-only bindings (no env var) — quiet and dry-run are intentionally
+	// not activatable via environment to prevent accidental activation.
+	for _, flag := range []string{"quiet", "dry-run"} {
+		if err := v.BindPFlag(flag, cmd.PersistentFlags().Lookup(flag)); err != nil {
+			panic(fmt.Sprintf("bind flag %s: %v", flag, err))
+		}
+	}
 }
