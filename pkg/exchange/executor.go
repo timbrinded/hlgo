@@ -53,8 +53,11 @@ type PlaceOrderInput struct {
 	Cloid      *string
 	TpTrigger  *string // take-profit trigger price
 	SlTrigger  *string // stop-loss trigger price
-	VaultAddr  string
-	DryRun     bool
+	Builder    *BuilderInfo
+	// ExpiresAfter, when set, causes the action to be rejected after this Unix ms timestamp.
+	ExpiresAfter *int64
+	VaultAddr    string
+	DryRun       bool
 }
 
 // PlaceOrderResult holds the result of a place order operation.
@@ -107,7 +110,7 @@ func (e *Executor) PlaceOrder(ctx context.Context, input PlaceOrderInput) (*Plac
 		ReduceOnly: input.ReduceOnly,
 		Tif:        input.Tif,
 		Cloid:      input.Cloid,
-	}}, nil)
+	}}, nil, input.Builder)
 
 	// 5. Append TP/SL trigger wires if present.
 	// Each trigger is a separate reduce-only order on the opposite side, using the same
@@ -136,7 +139,7 @@ func (e *Executor) PlaceOrder(ctx context.Context, input PlaceOrderInput) (*Plac
 		trigAction := BuildOrderAction([]OrderParams{trigOrder}, []*TriggerParams{{
 			TriggerPx: trig.px,
 			Tpsl:      trig.tpsl,
-		}})
+		}}, nil)
 		action.Orders = append(action.Orders, trigAction.Orders...)
 		action.Grouping = "normalTpsl"
 	}
@@ -169,13 +172,13 @@ func (e *Executor) PlaceOrder(ctx context.Context, input PlaceOrderInput) (*Plac
 		vaultAddr = &a
 	}
 
-	sig, err := e.signer.SignL1Action(action, nonce, vaultAddr, e.mainnet)
+	sig, err := e.signer.SignL1Action(action, nonce, vaultAddr, input.ExpiresAfter, e.mainnet)
 	if err != nil {
 		return nil, err
 	}
 
 	// 8. Send to exchange.
-	resp, err := e.client.PostExchange(ctx, action, nonce, sigToWire(sig), input.VaultAddr)
+	resp, err := e.client.PostExchange(ctx, action, nonce, sigToWire(sig), input.VaultAddr, input.ExpiresAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +191,7 @@ func (e *Executor) PlaceOrder(ctx context.Context, input PlaceOrderInput) (*Plac
 }
 
 // CancelOrders cancels orders by OID.
-func (e *Executor) CancelOrders(ctx context.Context, cancels []CancelWire, vaultAddr string, dryRun bool) (json.RawMessage, error) {
+func (e *Executor) CancelOrders(ctx context.Context, cancels []CancelWire, vaultAddr string, dryRun bool, expiresAfter *int64) (json.RawMessage, error) {
 	action := BuildCancelAction(cancels)
 
 	if dryRun {
@@ -203,16 +206,16 @@ func (e *Executor) CancelOrders(ctx context.Context, cancels []CancelWire, vault
 		vault = &a
 	}
 
-	sig, err := e.signer.SignL1Action(action, nonce, vault, e.mainnet)
+	sig, err := e.signer.SignL1Action(action, nonce, vault, expiresAfter, e.mainnet)
 	if err != nil {
 		return nil, err
 	}
 
-	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), vaultAddr)
+	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), vaultAddr, expiresAfter)
 }
 
 // CancelByCloid cancels orders by client order ID.
-func (e *Executor) CancelByCloid(ctx context.Context, cancels []CancelByCloidWire, vaultAddr string, dryRun bool) (json.RawMessage, error) {
+func (e *Executor) CancelByCloid(ctx context.Context, cancels []CancelByCloidWire, vaultAddr string, dryRun bool, expiresAfter *int64) (json.RawMessage, error) {
 	action := BuildCancelByCloidAction(cancels)
 
 	if dryRun {
@@ -227,10 +230,10 @@ func (e *Executor) CancelByCloid(ctx context.Context, cancels []CancelByCloidWir
 		vault = &a
 	}
 
-	sig, err := e.signer.SignL1Action(action, nonce, vault, e.mainnet)
+	sig, err := e.signer.SignL1Action(action, nonce, vault, expiresAfter, e.mainnet)
 	if err != nil {
 		return nil, err
 	}
 
-	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), vaultAddr)
+	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), vaultAddr, expiresAfter)
 }

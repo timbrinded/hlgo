@@ -129,8 +129,14 @@ func newInfoFillsCmd() *cobra.Command {
 				return err
 			}
 
-			startStr, _ := cmd.Flags().GetString("start") //nolint:errcheck // known flag
-			endStr, _ := cmd.Flags().GetString("end")     //nolint:errcheck // known flag
+			startStr, _ := cmd.Flags().GetString("start")                  //nolint:errcheck // known flag
+			endStr, _ := cmd.Flags().GetString("end")                      //nolint:errcheck // known flag
+			aggregateByTime, _ := cmd.Flags().GetBool("aggregate-by-time") //nolint:errcheck // known flag
+
+			var aggregateByTimePtr *bool
+			if cmd.Flags().Changed("aggregate-by-time") {
+				aggregateByTimePtr = &aggregateByTime
+			}
 
 			ic := buildInfoClient(cfg)
 
@@ -147,11 +153,15 @@ func newInfoFillsCmd() *cobra.Command {
 
 				if cfg.DryRun {
 					return printResult(cmd, cfg, mustMarshal(info.UserFillsRequest{
-						Type: "userFillsByTime", User: user, StartTime: startTime, EndTime: endTime,
+						Type:            "userFillsByTime",
+						User:            user,
+						StartTime:       startTime,
+						EndTime:         endTime,
+						AggregateByTime: aggregateByTimePtr,
 					}), nil)
 				}
 
-				raw, err := ic.UserFillsByTime(cmd.Context(), user, startTime, endTime)
+				raw, err := ic.UserFillsByTime(cmd.Context(), user, startTime, endTime, aggregateByTimePtr)
 				if err != nil {
 					return err
 				}
@@ -165,11 +175,13 @@ func newInfoFillsCmd() *cobra.Command {
 
 			if cfg.DryRun {
 				return printResult(cmd, cfg, mustMarshal(info.UserFillsRequest{
-					Type: "userFills", User: user,
+					Type:            "userFills",
+					User:            user,
+					AggregateByTime: aggregateByTimePtr,
 				}), nil)
 			}
 
-			raw, err := ic.UserFills(cmd.Context(), user)
+			raw, err := ic.UserFills(cmd.Context(), user, aggregateByTimePtr)
 			if err != nil {
 				return err
 			}
@@ -184,6 +196,7 @@ func newInfoFillsCmd() *cobra.Command {
 	cmd.Flags().String("address", "", "user address (default: derived from agent wallet)")
 	cmd.Flags().String("start", "", "start time (Unix ms or ISO 8601)")
 	cmd.Flags().String("end", "", "end time (Unix ms or ISO 8601)")
+	cmd.Flags().Bool("aggregate-by-time", false, "aggregate partial fills by timestamp")
 	return cmd
 }
 

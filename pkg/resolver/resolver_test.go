@@ -32,7 +32,7 @@ func testPerpMeta() string {
 
 // testSpotMeta returns a realistic spot meta response matching the real API shape.
 // Top-level "tokens" is the registry; universe[].tokens are integer indices into it.
-// The token index determines the asset ID: 10000 + index.
+// The spot market index determines the asset ID: 10000 + market index.
 func testSpotMeta() string {
 	return `{
 		"tokens": [
@@ -163,8 +163,8 @@ func TestResolveKnownSpotCoin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if info.AssetID != 10001 {
-		t.Errorf("AssetID = %d, want 10001 (10000 + index 1)", info.AssetID)
+	if info.AssetID != 10000 {
+		t.Errorf("AssetID = %d, want 10000 (10000 + market index 0)", info.AssetID)
 	}
 	if info.Coin != "PURR" {
 		t.Errorf("Coin = %q, want %q", info.Coin, "PURR")
@@ -185,8 +185,8 @@ func TestResolveSpotCoin_HFUN(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if info.AssetID != 10002 {
-		t.Errorf("AssetID = %d, want 10002 (10000 + index 2)", info.AssetID)
+	if info.AssetID != 10001 {
+		t.Errorf("AssetID = %d, want 10001 (10000 + market index 1)", info.AssetID)
 	}
 	if info.SzDecimals != 3 {
 		t.Errorf("SzDecimals = %d, want 3", info.SzDecimals)
@@ -221,8 +221,8 @@ func TestCaseInsensitiveSpotMatching(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if info.AssetID != 10001 {
-		t.Errorf("AssetID = %d, want 10001", info.AssetID)
+	if info.AssetID != 10000 {
+		t.Errorf("AssetID = %d, want 10000", info.AssetID)
 	}
 	if !info.IsSpot {
 		t.Error("IsSpot = false, want true")
@@ -329,8 +329,8 @@ func TestResolveSpotByMarketName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if info.AssetID != 10001 {
-		t.Errorf("AssetID = %d, want 10001", info.AssetID)
+	if info.AssetID != 10000 {
+		t.Errorf("AssetID = %d, want 10000", info.AssetID)
 	}
 	if !info.IsSpot {
 		t.Error("IsSpot = false, want true")
@@ -341,8 +341,8 @@ func TestResolveSpotByMarketName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if info2.AssetID != 10002 {
-		t.Errorf("AssetID = %d, want 10002", info2.AssetID)
+	if info2.AssetID != 10001 {
+		t.Errorf("AssetID = %d, want 10001", info2.AssetID)
 	}
 }
 
@@ -379,8 +379,8 @@ func TestMultipleCoinsFromSameCache(t *testing.T) {
 		{"BTC", 0, false},
 		{"ETH", 1, false},
 		{"SOL", 2, false},
-		{"PURR", 10001, true},
-		{"HFUN", 10002, true},
+		{"PURR", 10000, true},
+		{"HFUN", 10001, true},
 	}
 
 	for _, tc := range coins {
@@ -416,12 +416,61 @@ func TestPerpAssetIDFormula_IsArrayIndex(t *testing.T) {
 	}
 }
 
+func TestResolveHIP3PerpCoin_WithDexOffset(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"bad request"}`)
+			return
+		}
+
+		reqType, _ := req["type"].(string)
+		dex, _ := req["dex"].(string)
+
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case reqType == "meta" && dex == "":
+			fmt.Fprint(w, `{"universe":[{"name":"BTC","szDecimals":5}]}`)
+		case reqType == "spotMeta":
+			fmt.Fprint(w, `{"tokens":[{"name":"USDC","index":0,"szDecimals":6}],"universe":[{"name":"@0","index":0,"tokens":[0,0]}]}`)
+		case reqType == "perpDexs":
+			fmt.Fprint(w, `[null,{"name":"xyz"}]`)
+		case reqType == "meta" && dex == "xyz":
+			fmt.Fprint(w, `{"universe":[{"name":"xyz:XYZ100","szDecimals":4},{"name":"xyz:TSLA","szDecimals":3}]}`)
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, `{"error":"unexpected request type=%s dex=%s"}`, reqType, dex)
+		}
+	}))
+	defer srv.Close()
+
+	c := client.NewClient(srv.URL)
+	r := NewResolver(c, t.TempDir(), 5*time.Minute)
+	ctx := context.Background()
+
+	info, err := r.ResolveAsset(ctx, "xyz:TSLA")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// HIP-3 offset for first builder dex is 110000 + index.
+	if info.AssetID != 110001 {
+		t.Errorf("AssetID = %d, want 110001", info.AssetID)
+	}
+	if info.SzDecimals != 3 {
+		t.Errorf("SzDecimals = %d, want 3", info.SzDecimals)
+	}
+	if info.IsSpot {
+		t.Error("IsSpot = true, want false")
+	}
+}
+
 func TestSpotAssetIDFormula_10000PlusIndex(t *testing.T) {
 	r := newPreloadedResolver(t)
 	ctx := context.Background()
 
-	// PURR token has index=1, HFUN token has index=2.
-	expected := map[string]int{"PURR": 10001, "HFUN": 10002}
+	// PURR market has index=0, HFUN market has index=1.
+	expected := map[string]int{"PURR": 10000, "HFUN": 10001}
 	for coin, wantID := range expected {
 		info, err := r.ResolveAsset(ctx, coin)
 		if err != nil {
@@ -429,7 +478,7 @@ func TestSpotAssetIDFormula_10000PlusIndex(t *testing.T) {
 			continue
 		}
 		if info.AssetID != wantID {
-			t.Errorf("%s AssetID = %d, want %d (10000 + token index)", coin, info.AssetID, wantID)
+			t.Errorf("%s AssetID = %d, want %d (10000 + spot market index)", coin, info.AssetID, wantID)
 		}
 	}
 }
@@ -700,8 +749,8 @@ func TestBuildMaps_RealAPIFormat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if info.AssetID != 10001 {
-		t.Errorf("AssetID = %d, want 10001 (10000 + token index 1)", info.AssetID)
+	if info.AssetID != 10000 {
+		t.Errorf("AssetID = %d, want 10000 (10000 + market index 0)", info.AssetID)
 	}
 	if info.Coin != "PURR" {
 		t.Errorf("Coin = %q, want %q", info.Coin, "PURR")

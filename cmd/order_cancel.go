@@ -3,6 +3,7 @@ package cmd
 import (
 	"strconv"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
 
 	"github.com/timbrinded/hlgo/pkg/client"
@@ -19,10 +20,11 @@ func newOrderCancelCmd() *cobra.Command {
 		Short: "Cancel an order by OID or CLOID",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			coin, _ := cmd.Flags().GetString("coin")      //nolint:errcheck // known flag
-			oidStr, _ := cmd.Flags().GetString("oid")     //nolint:errcheck // known flag
-			cloidStr, _ := cmd.Flags().GetString("cloid") //nolint:errcheck // known flag
-			vault, _ := cmd.Flags().GetString("vault")    //nolint:errcheck // known flag
+			coin, _ := cmd.Flags().GetString("coin")                     //nolint:errcheck // known flag
+			oidStr, _ := cmd.Flags().GetString("oid")                    //nolint:errcheck // known flag
+			cloidStr, _ := cmd.Flags().GetString("cloid")                //nolint:errcheck // known flag
+			vault, _ := cmd.Flags().GetString("vault")                   //nolint:errcheck // known flag
+			expiresAfterStr, _ := cmd.Flags().GetString("expires-after") //nolint:errcheck // known flag
 
 			// Mutual exclusion: exactly one of --oid or --cloid.
 			if oidStr == "" && cloidStr == "" {
@@ -37,6 +39,23 @@ func newOrderCancelCmd() *cobra.Command {
 				return err
 			}
 
+			if vault != "" && !common.IsHexAddress(vault) {
+				return output.NewCLIError(output.ErrValidation, "invalid vault address").
+					WithDetails("vault", vault)
+			}
+
+			var expiresAfter *int64
+			if expiresAfterStr != "" {
+				ms, err := parseTimeFlag(expiresAfterStr)
+				if err != nil {
+					return err
+				}
+				if ms <= 0 {
+					return output.NewCLIError(output.ErrValidation, "expires-after must be a positive Unix ms timestamp")
+				}
+				expiresAfter = &ms
+			}
+
 			if cloidStr != "" {
 				// Cancel by CLOID — resolve coin to asset ID.
 				assetID, err := resolveAssetID(cmd, cfg, coin)
@@ -46,7 +65,7 @@ func newOrderCancelCmd() *cobra.Command {
 
 				result, err := exec.CancelByCloid(cmd.Context(), []exchange.CancelByCloidWire{
 					{Asset: assetID, Cloid: cloidStr},
-				}, vault, cfg.DryRun)
+				}, vault, cfg.DryRun, expiresAfter)
 				if err != nil {
 					return err
 				}
@@ -54,7 +73,7 @@ func newOrderCancelCmd() *cobra.Command {
 			}
 
 			// Cancel by OID.
-			oid, err := strconv.ParseInt(oidStr, 10, 64)
+			oid, err := strconv.ParseUint(oidStr, 10, 64)
 			if err != nil {
 				return output.NewCLIError(output.ErrValidation, "invalid OID: must be numeric").
 					WithDetails("value", oidStr)
@@ -67,7 +86,7 @@ func newOrderCancelCmd() *cobra.Command {
 
 			result, err := exec.CancelOrders(cmd.Context(), []exchange.CancelWire{
 				{A: assetID, O: oid},
-			}, vault, cfg.DryRun)
+			}, vault, cfg.DryRun, expiresAfter)
 			if err != nil {
 				return err
 			}
@@ -79,6 +98,7 @@ func newOrderCancelCmd() *cobra.Command {
 	cmd.Flags().String("oid", "", "order ID to cancel")
 	cmd.Flags().String("cloid", "", "client order ID to cancel")
 	cmd.Flags().String("vault", "", "vault address")
+	cmd.Flags().String("expires-after", "", "expiry timestamp (Unix ms or ISO 8601)")
 
 	//nolint:errcheck // MarkFlagRequired on known flags never fails
 	cmd.MarkFlagRequired("coin")
@@ -92,8 +112,9 @@ func newOrderCancelAllCmd() *cobra.Command {
 		Short: "Cancel all open orders (optionally for a specific coin)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			coin, _ := cmd.Flags().GetString("coin")   //nolint:errcheck // known flag
-			vault, _ := cmd.Flags().GetString("vault") //nolint:errcheck // known flag
+			coin, _ := cmd.Flags().GetString("coin")                     //nolint:errcheck // known flag
+			vault, _ := cmd.Flags().GetString("vault")                   //nolint:errcheck // known flag
+			expiresAfterStr, _ := cmd.Flags().GetString("expires-after") //nolint:errcheck // known flag
 
 			// Resolve user address for fetching open orders.
 			addr, err := info.ResolveUserAddress("", cfg)
@@ -124,17 +145,39 @@ func newOrderCancelAllCmd() *cobra.Command {
 				return err
 			}
 
+			if vault != "" && !common.IsHexAddress(vault) {
+				return output.NewCLIError(output.ErrValidation, "invalid vault address").
+					WithDetails("vault", vault)
+			}
+
+			var expiresAfter *int64
+			if expiresAfterStr != "" {
+				ms, err := parseTimeFlag(expiresAfterStr)
+				if err != nil {
+					return err
+				}
+				if ms <= 0 {
+					return output.NewCLIError(output.ErrValidation, "expires-after must be a positive Unix ms timestamp")
+				}
+				expiresAfter = &ms
+			}
+
 			// Build cancel list, optionally filtered by coin.
 			var cancels []exchange.CancelWire
 			for _, o := range orders {
 				if coin != "" && o.Coin != coin {
 					continue
 				}
+				if o.Oid < 0 {
+					return output.NewCLIError(output.ErrAPI, "open order returned negative OID").
+						WithDetails("coin", o.Coin).
+						WithDetails("oid", o.Oid)
+				}
 				assetID, err := resolveAssetID(cmd, cfg, o.Coin)
 				if err != nil {
 					return err
 				}
-				cancels = append(cancels, exchange.CancelWire{A: assetID, O: o.Oid})
+				cancels = append(cancels, exchange.CancelWire{A: assetID, O: uint64(o.Oid)})
 			}
 
 			if len(cancels) == 0 {
@@ -143,7 +186,7 @@ func newOrderCancelAllCmd() *cobra.Command {
 				}), nil)
 			}
 
-			result, err := exec.CancelOrders(cmd.Context(), cancels, vault, cfg.DryRun)
+			result, err := exec.CancelOrders(cmd.Context(), cancels, vault, cfg.DryRun, expiresAfter)
 			if err != nil {
 				return err
 			}
@@ -153,6 +196,7 @@ func newOrderCancelAllCmd() *cobra.Command {
 
 	cmd.Flags().String("coin", "", "only cancel orders for this coin")
 	cmd.Flags().String("vault", "", "vault address")
+	cmd.Flags().String("expires-after", "", "expiry timestamp (Unix ms or ISO 8601)")
 
 	return cmd
 }

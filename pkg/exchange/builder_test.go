@@ -12,7 +12,7 @@ func TestBuildOrderAction_LimitOrder(t *testing.T) {
 		Tif:        "Gtc",
 	}}
 
-	action := BuildOrderAction(params, nil)
+	action := BuildOrderAction(params, nil, nil)
 
 	if action.Type != "order" {
 		t.Errorf("Type = %q, want order", action.Type)
@@ -46,7 +46,7 @@ func TestBuildOrderAction_WithTrigger(t *testing.T) {
 		Tpsl:      "sl",
 	}}
 
-	action := BuildOrderAction(params, triggers)
+	action := BuildOrderAction(params, triggers, nil)
 
 	if action.Grouping != "normalTpsl" {
 		t.Errorf("Grouping = %q, want normalTpSl", action.Grouping)
@@ -70,7 +70,7 @@ func TestBuildOrderAction_WithCloid(t *testing.T) {
 		Cloid:   &cloid,
 	}}
 
-	action := BuildOrderAction(params, nil)
+	action := BuildOrderAction(params, nil, nil)
 
 	if action.Orders[0].C == nil || *action.Orders[0].C != "my-order-123" {
 		t.Errorf("Cloid = %v, want my-order-123", action.Orders[0].C)
@@ -93,6 +93,32 @@ func TestBuildCancelAction(t *testing.T) {
 	}
 	if action.Cancels[0].O != 12345 {
 		t.Errorf("first cancel OID = %d, want 12345", action.Cancels[0].O)
+	}
+}
+
+func TestBuildOrderAction_WithBuilder(t *testing.T) {
+	params := []OrderParams{{
+		AssetID: 0,
+		IsBuy:   true,
+		Price:   "50000",
+		Size:    "0.01",
+		Tif:     "Gtc",
+	}}
+	builder := &BuilderInfo{
+		B: "0x1234567890abcdef1234567890abcdef12345678",
+		F: 10,
+	}
+
+	action := BuildOrderAction(params, nil, builder)
+
+	if action.Builder == nil {
+		t.Fatal("Builder = nil, want non-nil")
+	}
+	if action.Builder.B != builder.B {
+		t.Errorf("Builder.B = %q, want %q", action.Builder.B, builder.B)
+	}
+	if action.Builder.F != builder.F {
+		t.Errorf("Builder.F = %d, want %d", action.Builder.F, builder.F)
 	}
 }
 

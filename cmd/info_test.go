@@ -149,6 +149,20 @@ func TestInfoBook_DryRun(t *testing.T) {
 	}
 }
 
+func TestInfoBook_WithMantissa_DryRun(t *testing.T) {
+	stdout, _, run := newTestRootWithServer(t, "")
+
+	if err := run("info", "book", "BTC", "--sigfigs", "5", "--mantissa", "2", "--dry-run"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var req map[string]any
+	json.Unmarshal(stdout.Bytes(), &req)
+	if req["mantissa"] != float64(2) {
+		t.Errorf("mantissa = %v, want 2", req["mantissa"])
+	}
+}
+
 func TestInfoBook_RequiresCoin(t *testing.T) {
 	_, _, run := newTestRootWithServer(t, "")
 
@@ -169,8 +183,12 @@ func TestInfoCandles_DryRun(t *testing.T) {
 	if req["type"] != "candleSnapshot" {
 		t.Errorf("type = %v, want candleSnapshot", req["type"])
 	}
-	if req["interval"] != "1h" {
-		t.Errorf("interval = %v, want 1h", req["interval"])
+	body, ok := req["req"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected nested req object, got %T", req["req"])
+	}
+	if body["interval"] != "1h" {
+		t.Errorf("interval = %v, want 1h", body["interval"])
 	}
 }
 
@@ -260,6 +278,20 @@ func TestInfoFills_WithTime_DryRun(t *testing.T) {
 	json.Unmarshal(stdout.Bytes(), &req)
 	if req["type"] != "userFillsByTime" {
 		t.Errorf("type = %v, want userFillsByTime", req["type"])
+	}
+}
+
+func TestInfoFills_AggregateByTime_DryRun(t *testing.T) {
+	stdout, _, run := newTestRootWithServer(t, "")
+
+	if err := run("info", "fills", "--aggregate-by-time", "--dry-run"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var req map[string]any
+	json.Unmarshal(stdout.Bytes(), &req)
+	if req["aggregateByTime"] != true {
+		t.Errorf("aggregateByTime = %v, want true", req["aggregateByTime"])
 	}
 }
 

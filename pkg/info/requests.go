@@ -24,6 +24,7 @@ type L2BookRequest struct {
 	Type     string `json:"type"`
 	Coin     string `json:"coin"`
 	NSigFigs *int   `json:"nSigFigs,omitempty"`
+	Mantissa *int   `json:"mantissa,omitempty"`
 }
 
 // RecentTradesRequest fetches recent trades for a coin.
@@ -32,13 +33,18 @@ type RecentTradesRequest struct {
 	Coin string `json:"coin"`
 }
 
-// CandleSnapshotRequest fetches OHLCV candle data.
-type CandleSnapshotRequest struct {
-	Type      string `json:"type"`
+// CandleSnapshotReq is the nested request object for candleSnapshot.
+type CandleSnapshotReq struct {
 	Coin      string `json:"coin"`
 	Interval  string `json:"interval"`
 	StartTime int64  `json:"startTime"`
 	EndTime   int64  `json:"endTime"`
+}
+
+// CandleSnapshotRequest fetches OHLCV candle data.
+type CandleSnapshotRequest struct {
+	Type string            `json:"type"`
+	Req  CandleSnapshotReq `json:"req"`
 }
 
 // ClearinghouseStateRequest fetches perp account state.
@@ -63,10 +69,11 @@ type FrontendOpenOrdersRequest struct {
 
 // UserFillsRequest fetches fill history for a user.
 type UserFillsRequest struct {
-	Type      string `json:"type"`
-	User      string `json:"user"`
-	StartTime int64  `json:"startTime,omitempty"`
-	EndTime   int64  `json:"endTime,omitempty"`
+	Type            string `json:"type"`
+	User            string `json:"user"`
+	StartTime       int64  `json:"startTime,omitempty"`
+	EndTime         int64  `json:"endTime,omitempty"`
+	AggregateByTime *bool  `json:"aggregateByTime,omitempty"`
 }
 
 // OrderStatusRequest fetches the status of a specific order.

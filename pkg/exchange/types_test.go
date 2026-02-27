@@ -61,7 +61,7 @@ func TestOrderAction_SigningVector_Mainnet(t *testing.T) {
 		Grouping: "na",
 	}
 
-	sig, err := s.SignL1Action(action, 0, nil, true)
+	sig, err := s.SignL1Action(action, 0, nil, nil, true)
 	if err != nil {
 		t.Fatalf("signing: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestOrderAction_SigningVector_Testnet(t *testing.T) {
 		Grouping: "na",
 	}
 
-	sig, err := s.SignL1Action(action, 0, nil, false)
+	sig, err := s.SignL1Action(action, 0, nil, nil, false)
 	if err != nil {
 		t.Fatalf("signing: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestOrderAction_TriggerSigningVector(t *testing.T) {
 		Grouping: "na",
 	}
 
-	sig, err := s.SignL1Action(action, 0, nil, true)
+	sig, err := s.SignL1Action(action, 0, nil, nil, true)
 	if err != nil {
 		t.Fatalf("signing: %v", err)
 	}

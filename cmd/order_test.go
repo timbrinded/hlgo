@@ -93,6 +93,52 @@ func TestOrderPlace_WithCloid(t *testing.T) {
 	}
 }
 
+func TestOrderPlace_WithBuilder_DryRun(t *testing.T) {
+	stdout, _, run := newTestRootWithServer(t, "")
+
+	err := run("order", "place",
+		"--coin", "BTC", "--side", "buy", "--price", "50000", "--size", "0.01",
+		"--builder", "0x1234567890abcdef1234567890abcdef12345678",
+		"--builder-fee-tenths-bp", "10",
+		"--dry-run",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse output: %v\nraw: %s", err, stdout.String())
+	}
+	action, ok := result["action"].(map[string]any)
+	if !ok {
+		t.Fatal("expected action map")
+	}
+	builder, ok := action["builder"].(map[string]any)
+	if !ok {
+		t.Fatal("expected builder map")
+	}
+	if builder["b"] != "0x1234567890abcdef1234567890abcdef12345678" {
+		t.Errorf("builder.b = %v", builder["b"])
+	}
+	if builder["f"] != float64(10) {
+		t.Errorf("builder.f = %v, want 10", builder["f"])
+	}
+}
+
+func TestOrderPlace_BuilderRequiresFee(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("order", "place",
+		"--coin", "BTC", "--side", "buy", "--price", "50000", "--size", "0.01",
+		"--builder", "0x1234567890abcdef1234567890abcdef12345678",
+		"--dry-run",
+	)
+	if err == nil {
+		t.Fatal("expected error when builder fee is missing")
+	}
+}
+
 func TestOrderCancel_DryRun(t *testing.T) {
 	stdout, _, run := newTestRootWithServer(t, "")
 

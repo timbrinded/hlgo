@@ -36,6 +36,7 @@ func TestParseMidsResult(t *testing.T) {
 func TestParseBookResult(t *testing.T) {
 	raw := json.RawMessage(`{
 		"coin": "BTC",
+		"time": 1700000000000,
 		"levels": [
 			[{"px":"95000","sz":"1.5","n":3}],
 			[{"px":"95100","sz":"0.8","n":1}]
@@ -47,6 +48,9 @@ func TestParseBookResult(t *testing.T) {
 	}
 	if b.Coin != "BTC" {
 		t.Errorf("Coin = %q, want BTC", b.Coin)
+	}
+	if b.Time != 1700000000000 {
+		t.Errorf("Time = %d, want 1700000000000", b.Time)
 	}
 	rows := b.Rows()
 	if len(rows) != 2 {
@@ -76,7 +80,7 @@ func TestParseTradesResult(t *testing.T) {
 }
 
 func TestParseCandlesResult(t *testing.T) {
-	raw := json.RawMessage(`[{"t":1700000000000,"o":"95000","h":"96000","l":"94000","c":"95500","v":"100.5"}]`)
+	raw := json.RawMessage(`[{"T":1700003599999,"c":"95500","h":"96000","i":"1h","l":"94000","n":42,"o":"95000","s":"BTC","t":1700000000000,"v":"100.5"}]`)
 	c, err := ParseCandlesResult(raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -91,6 +95,21 @@ func TestParseCandlesResult(t *testing.T) {
 	}
 	if rows[0][1] != "95000" || rows[0][5] != "100.5" {
 		t.Errorf("row = %v", rows[0])
+	}
+	if c[0].CloseTime != 1700003599999 {
+		t.Errorf("CloseTime = %d, want 1700003599999", c[0].CloseTime)
+	}
+	if c[0].OpenTime != 1700000000000 {
+		t.Errorf("OpenTime = %d, want 1700000000000", c[0].OpenTime)
+	}
+	if c[0].Interval != "1h" {
+		t.Errorf("Interval = %q, want 1h", c[0].Interval)
+	}
+	if c[0].S != "BTC" {
+		t.Errorf("S = %q, want BTC", c[0].S)
+	}
+	if c[0].N != 42 {
+		t.Errorf("N = %d, want 42", c[0].N)
 	}
 }
 
@@ -109,7 +128,11 @@ func TestParseStateResult(t *testing.T) {
 				}
 			}
 		],
-		"marginSummary": {}
+		"marginSummary": {"accountValue":"1","totalMarginUsed":"2","totalNtlPos":"3","totalRawUsd":"4"},
+		"crossMarginSummary": {"accountValue":"5","totalMarginUsed":"6","totalNtlPos":"7","totalRawUsd":"8"},
+		"crossMaintenanceMarginUsed": "9",
+		"withdrawable": "10",
+		"time": 1700000000000
 	}`)
 	s, err := ParseStateResult(raw)
 	if err != nil {
@@ -121,6 +144,15 @@ func TestParseStateResult(t *testing.T) {
 	rows := s.Rows()
 	if rows[0][0] != "BTC" || rows[0][1] != "0.5" {
 		t.Errorf("row = %v", rows[0])
+	}
+	if s.CrossMaintenanceMarginUsed != "9" {
+		t.Errorf("CrossMaintenanceMarginUsed = %q, want 9", s.CrossMaintenanceMarginUsed)
+	}
+	if s.Withdrawable != "10" {
+		t.Errorf("Withdrawable = %q, want 10", s.Withdrawable)
+	}
+	if s.Time != 1700000000000 {
+		t.Errorf("Time = %d, want 1700000000000", s.Time)
 	}
 }
 
@@ -140,7 +172,7 @@ func TestParseOpenOrdersResult(t *testing.T) {
 }
 
 func TestParseFillsResult(t *testing.T) {
-	raw := json.RawMessage(`[{"coin":"BTC","side":"B","px":"95000","sz":"0.1","time":1700000000000,"fee":"0.5","oid":1,"startPosition":"0","closedPnl":"0"}]`)
+	raw := json.RawMessage(`[{"coin":"BTC","side":"B","px":"95000","sz":"0.1","time":1700000000000,"fee":"0.5","oid":1,"startPosition":"0","closedPnl":"0","crossed":false,"dir":"Open Long","hash":"0xabc","feeToken":"USDC","builderFee":"0.1","tid":9}]`)
 	f, err := ParseFillsResult(raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -148,6 +180,18 @@ func TestParseFillsResult(t *testing.T) {
 	rows := f.Rows()
 	if len(rows) != 1 || rows[0][1] != "BTC" {
 		t.Errorf("row = %v", rows[0])
+	}
+	if f[0].Hash != "0xabc" {
+		t.Errorf("Hash = %q, want 0xabc", f[0].Hash)
+	}
+	if f[0].FeeToken != "USDC" {
+		t.Errorf("FeeToken = %q, want USDC", f[0].FeeToken)
+	}
+	if f[0].Tid != 9 {
+		t.Errorf("Tid = %d, want 9", f[0].Tid)
+	}
+	if f[0].BuilderFee == nil || *f[0].BuilderFee != "0.1" {
+		t.Errorf("BuilderFee = %v, want 0.1", f[0].BuilderFee)
 	}
 }
 
@@ -176,6 +220,38 @@ func TestParsePerpDexsResult(t *testing.T) {
 	rows := p.Rows()
 	if len(rows) != 1 || rows[0][0] != "xyz" {
 		t.Errorf("row = %v", rows[0])
+	}
+}
+
+func TestParsePredictedFundingsResult(t *testing.T) {
+	raw := json.RawMessage(`[
+		["AVAX", [["BinPerp", {"fundingRate":"0.0001","nextFundingTime":1733961600000}], ["HlPerp", {"fundingRate":"0.0000125","nextFundingTime":1733958000000}]]]
+	]`)
+	p, err := ParsePredictedFundingsResult(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(p) != 1 {
+		t.Fatalf("len = %d, want 1", len(p))
+	}
+	if p[0].Coin != "AVAX" {
+		t.Errorf("Coin = %q, want AVAX", p[0].Coin)
+	}
+	if len(p[0].Venues) != 2 {
+		t.Fatalf("venues len = %d, want 2", len(p[0].Venues))
+	}
+	if p[0].Venues[0].Venue != "BinPerp" {
+		t.Errorf("Venue = %q, want BinPerp", p[0].Venues[0].Venue)
+	}
+	if p[0].Venues[0].Details.FundingRate != "0.0001" {
+		t.Errorf("FundingRate = %q, want 0.0001", p[0].Venues[0].Details.FundingRate)
+	}
+	rows := p.Rows()
+	if len(rows) != 2 {
+		t.Fatalf("rows len = %d, want 2", len(rows))
+	}
+	if rows[0][0] != "AVAX" {
+		t.Errorf("first row coin = %q, want AVAX", rows[0][0])
 	}
 }
 

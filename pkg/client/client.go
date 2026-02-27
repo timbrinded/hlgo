@@ -68,6 +68,7 @@ type exchangeRequest struct {
 	Nonce        int64         `json:"nonce"`
 	Signature    SignatureWire `json:"signature"`
 	VaultAddress string        `json:"vaultAddress,omitempty"`
+	ExpiresAfter *int64        `json:"expiresAfter,omitempty"`
 }
 
 // PostInfo sends a request to the /info endpoint and returns the raw JSON response.
@@ -79,12 +80,13 @@ func (c *Client) PostInfo(ctx context.Context, request any) (json.RawMessage, er
 // PostExchange sends a signed action to the /exchange endpoint.
 // The action, nonce, and signature are wrapped in the standard envelope.
 // vaultAddress is included only when non-empty.
-func (c *Client) PostExchange(ctx context.Context, action any, nonce int64, signature SignatureWire, vaultAddress string) (json.RawMessage, error) {
+func (c *Client) PostExchange(ctx context.Context, action any, nonce int64, signature SignatureWire, vaultAddress string, expiresAfter *int64) (json.RawMessage, error) {
 	body := exchangeRequest{
 		Action:       action,
 		Nonce:        nonce,
 		Signature:    signature,
 		VaultAddress: vaultAddress,
+		ExpiresAfter: expiresAfter,
 	}
 	return c.doPost(ctx, "/exchange", body)
 }

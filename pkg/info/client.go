@@ -43,8 +43,13 @@ func (ic *InfoClient) SpotMetaAndAssetCtxs(ctx context.Context) (json.RawMessage
 }
 
 // L2Book fetches the L2 order book for a coin.
-func (ic *InfoClient) L2Book(ctx context.Context, coin string, nSigFigs *int) (json.RawMessage, error) {
-	return ic.c.PostInfo(ctx, L2BookRequest{Type: "l2Book", Coin: coin, NSigFigs: nSigFigs})
+func (ic *InfoClient) L2Book(ctx context.Context, coin string, nSigFigs, mantissa *int) (json.RawMessage, error) {
+	return ic.c.PostInfo(ctx, L2BookRequest{
+		Type:     "l2Book",
+		Coin:     coin,
+		NSigFigs: nSigFigs,
+		Mantissa: mantissa,
+	})
 }
 
 // RecentTrades fetches recent trades for a coin.
@@ -55,11 +60,13 @@ func (ic *InfoClient) RecentTrades(ctx context.Context, coin string) (json.RawMe
 // CandleSnapshot fetches OHLCV candle data.
 func (ic *InfoClient) CandleSnapshot(ctx context.Context, coin, interval string, startTime, endTime int64) (json.RawMessage, error) {
 	return ic.c.PostInfo(ctx, CandleSnapshotRequest{
-		Type:      "candleSnapshot",
-		Coin:      coin,
-		Interval:  interval,
-		StartTime: startTime,
-		EndTime:   endTime,
+		Type: "candleSnapshot",
+		Req: CandleSnapshotReq{
+			Coin:      coin,
+			Interval:  interval,
+			StartTime: startTime,
+			EndTime:   endTime,
+		},
 	})
 }
 
@@ -90,20 +97,22 @@ func (ic *InfoClient) FrontendOpenOrders(ctx context.Context, user, dex string) 
 }
 
 // UserFills fetches fill history for a user.
-func (ic *InfoClient) UserFills(ctx context.Context, user string) (json.RawMessage, error) {
+func (ic *InfoClient) UserFills(ctx context.Context, user string, aggregateByTime *bool) (json.RawMessage, error) {
 	return ic.c.PostInfo(ctx, UserFillsRequest{
-		Type: "userFills",
-		User: user,
+		Type:            "userFills",
+		User:            user,
+		AggregateByTime: aggregateByTime,
 	})
 }
 
 // UserFillsByTime fetches fills for a user within a time range.
-func (ic *InfoClient) UserFillsByTime(ctx context.Context, user string, startTime, endTime int64) (json.RawMessage, error) {
+func (ic *InfoClient) UserFillsByTime(ctx context.Context, user string, startTime, endTime int64, aggregateByTime *bool) (json.RawMessage, error) {
 	return ic.c.PostInfo(ctx, UserFillsRequest{
-		Type:      "userFillsByTime",
-		User:      user,
-		StartTime: startTime,
-		EndTime:   endTime,
+		Type:            "userFillsByTime",
+		User:            user,
+		StartTime:       startTime,
+		EndTime:         endTime,
+		AggregateByTime: aggregateByTime,
 	})
 }
 

@@ -74,7 +74,36 @@ func TestInfoClient_L2Book(t *testing.T) {
 	defer srv.Close()
 
 	ic := NewInfoClient(client.NewClient(srv.URL))
-	_, err := ic.L2Book(context.Background(), "BTC", nil)
+	_, err := ic.L2Book(context.Background(), "BTC", nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestInfoClient_CandleSnapshot_NestedReq(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]any
+		json.Unmarshal(body, &req)
+		if req["type"] != "candleSnapshot" {
+			t.Errorf("type = %v, want candleSnapshot", req["type"])
+		}
+		nested, ok := req["req"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected req object, got %T", req["req"])
+		}
+		if nested["coin"] != "BTC" {
+			t.Errorf("req.coin = %v, want BTC", nested["coin"])
+		}
+		if nested["interval"] != "1h" {
+			t.Errorf("req.interval = %v, want 1h", nested["interval"])
+		}
+		fmt.Fprint(w, `[]`)
+	}))
+	defer srv.Close()
+
+	ic := NewInfoClient(client.NewClient(srv.URL))
+	_, err := ic.CandleSnapshot(context.Background(), "BTC", "1h", 1, 2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

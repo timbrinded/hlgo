@@ -59,6 +59,7 @@ func (bs *BookSide) UnmarshalJSON(data []byte) error {
 // BookResult represents the L2 order book response.
 type BookResult struct {
 	Coin   string     `json:"coin"`
+	Time   int64      `json:"time"`
 	Levels []BookSide `json:"levels"`
 }
 
@@ -126,12 +127,16 @@ func (t TradesResult) Rows() [][]string {
 
 // Candle represents a single OHLCV candle.
 type Candle struct {
-	T int64  `json:"t"` // open time in ms
-	O string `json:"o"` // open
-	H string `json:"h"` // high
-	L string `json:"l"` // low
-	C string `json:"c"` // close
-	V string `json:"v"` // volume
+	CloseTime int64  `json:"T"` // close time in ms
+	C         string `json:"c"` // close
+	H         string `json:"h"` // high
+	Interval  string `json:"i"` // interval
+	L         string `json:"l"` // low
+	N         int64  `json:"n"` // trade count
+	O         string `json:"o"` // open
+	S         string `json:"s"` // symbol
+	OpenTime  int64  `json:"t"` // open time in ms
+	V         string `json:"v"` // volume
 }
 
 // CandlesResult is a list of candles.
@@ -154,7 +159,7 @@ func (c CandlesResult) Rows() [][]string {
 	rows := make([][]string, 0, len(c))
 	for _, cd := range c {
 		rows = append(rows, []string{
-			formatTimestamp(cd.T),
+			formatTimestamp(cd.OpenTime),
 			cd.O, cd.H, cd.L, cd.C, cd.V,
 		})
 	}
@@ -169,8 +174,9 @@ type Position struct {
 	UnrealizedPnl string `json:"unrealizedPnl"`
 	LiquidationPx string `json:"liquidationPx,omitempty"`
 	Leverage      struct {
-		Type  string `json:"type"`
-		Value int    `json:"value"`
+		Type   string `json:"type"`
+		Value  int    `json:"value"`
+		RawUSD string `json:"rawUsd,omitempty"`
 	} `json:"leverage"`
 }
 
@@ -180,10 +186,22 @@ type AssetPosition struct {
 	Position Position `json:"position"`
 }
 
+// MarginSummary represents account-level margin metrics.
+type MarginSummary struct {
+	AccountValue    string `json:"accountValue"`
+	TotalMarginUsed string `json:"totalMarginUsed"`
+	TotalNtlPos     string `json:"totalNtlPos"`
+	TotalRawUSD     string `json:"totalRawUsd"`
+}
+
 // StateResult represents the clearinghouse state response.
 type StateResult struct {
-	AssetPositions []AssetPosition `json:"assetPositions"`
-	MarginSummary  json.RawMessage `json:"marginSummary"`
+	AssetPositions             []AssetPosition `json:"assetPositions"`
+	MarginSummary              MarginSummary   `json:"marginSummary"`
+	CrossMarginSummary         MarginSummary   `json:"crossMarginSummary"`
+	CrossMaintenanceMarginUsed string          `json:"crossMaintenanceMarginUsed"`
+	Withdrawable               string          `json:"withdrawable"`
+	Time                       int64           `json:"time"`
 }
 
 // ParseStateResult unmarshals raw JSON into a StateResult.
@@ -213,14 +231,20 @@ func (s *StateResult) Rows() [][]string {
 
 // OpenOrder represents a single open order.
 type OpenOrder struct {
-	Coin      string `json:"coin"`
-	Side      string `json:"side"`
-	LimitPx   string `json:"limitPx"`
-	Sz        string `json:"sz"`
-	Oid       int64  `json:"oid"`
-	Timestamp int64  `json:"timestamp"`
-	OrderType string `json:"orderType"`
-	Cloid     string `json:"cloid,omitempty"`
+	Coin             string `json:"coin"`
+	Side             string `json:"side"`
+	LimitPx          string `json:"limitPx"`
+	Sz               string `json:"sz"`
+	Oid              int64  `json:"oid"`
+	Timestamp        int64  `json:"timestamp"`
+	OrderType        string `json:"orderType"`
+	Cloid            string `json:"cloid,omitempty"`
+	IsPositionTpsl   bool   `json:"isPositionTpsl"`
+	IsTrigger        bool   `json:"isTrigger"`
+	OrigSz           string `json:"origSz"`
+	ReduceOnly       bool   `json:"reduceOnly"`
+	TriggerCondition string `json:"triggerCondition"`
+	TriggerPx        string `json:"triggerPx"`
 }
 
 // OpenOrdersResult is a list of open orders.
@@ -253,15 +277,21 @@ func (o OpenOrdersResult) Rows() [][]string {
 
 // Fill represents a single trade fill.
 type Fill struct {
-	Coin          string `json:"coin"`
-	Side          string `json:"side"`
-	Px            string `json:"px"`
-	Sz            string `json:"sz"`
-	Time          int64  `json:"time"`
-	Fee           string `json:"fee"`
-	Oid           int64  `json:"oid"`
-	StartPosition string `json:"startPosition"`
-	ClosedPnl     string `json:"closedPnl"`
+	Coin          string  `json:"coin"`
+	Side          string  `json:"side"`
+	Px            string  `json:"px"`
+	Sz            string  `json:"sz"`
+	Time          int64   `json:"time"`
+	Fee           string  `json:"fee"`
+	Oid           int64   `json:"oid"`
+	StartPosition string  `json:"startPosition"`
+	ClosedPnl     string  `json:"closedPnl"`
+	Crossed       bool    `json:"crossed"`
+	Dir           string  `json:"dir"`
+	Hash          string  `json:"hash"`
+	FeeToken      string  `json:"feeToken"`
+	BuilderFee    *string `json:"builderFee,omitempty"`
+	Tid           int64   `json:"tid"`
 }
 
 // FillsResult is a list of fills.
@@ -325,24 +355,94 @@ func (f FundingResult) Rows() [][]string {
 	return rows
 }
 
-// PredictedFunding represents a single predicted funding entry.
-type PredictedFunding struct {
-	Coin  string `json:"coin"`
-	Venue string `json:"venue"`
-	Rate  string `json:"rate"`
+// PredictedFundingVenueDetails holds venue funding details.
+type PredictedFundingVenueDetails struct {
+	FundingRate     string `json:"fundingRate"`
+	NextFundingTime int64  `json:"nextFundingTime"`
 }
 
-// PredictedFundingsResult wraps the predicted fundings response.
-// The API returns an array of [coin, venue, rate_string] arrays.
-type PredictedFundingsResult [][]json.RawMessage
+// PredictedFundingVenue represents one venue entry for a coin.
+type PredictedFundingVenue struct {
+	Venue   string
+	Details PredictedFundingVenueDetails
+}
+
+// PredictedFundingCoin represents one coin entry with all venue predictions.
+type PredictedFundingCoin struct {
+	Coin   string
+	Venues []PredictedFundingVenue
+}
+
+// PredictedFundingsResult wraps the nested predicted funding response.
+// API shape:
+// [
+//
+//	["AVAX", [["BinPerp", {...}], ["HlPerp", {...}]]],
+//	...
+//
+// ]
+type PredictedFundingsResult []PredictedFundingCoin
 
 // ParsePredictedFundingsResult unmarshals raw JSON into a PredictedFundingsResult.
 func ParsePredictedFundingsResult(raw json.RawMessage) (PredictedFundingsResult, error) {
-	var p PredictedFundingsResult
-	if err := json.Unmarshal(raw, &p); err != nil {
+	var outer []json.RawMessage
+	if err := json.Unmarshal(raw, &outer); err != nil {
 		return nil, fmt.Errorf("parsing predicted fundings: %w", err)
 	}
-	return p, nil
+
+	result := make(PredictedFundingsResult, 0, len(outer))
+	for i, coinEntryRaw := range outer {
+		var coinEntry []json.RawMessage
+		if err := json.Unmarshal(coinEntryRaw, &coinEntry); err != nil {
+			return nil, fmt.Errorf("parsing predicted fundings coin entry %d: %w", i, err)
+		}
+		if len(coinEntry) != 2 {
+			return nil, fmt.Errorf("parsing predicted fundings coin entry %d: expected length 2, got %d", i, len(coinEntry))
+		}
+
+		var coin string
+		if err := json.Unmarshal(coinEntry[0], &coin); err != nil {
+			return nil, fmt.Errorf("parsing predicted fundings coin name %d: %w", i, err)
+		}
+
+		var venuesRaw []json.RawMessage
+		if err := json.Unmarshal(coinEntry[1], &venuesRaw); err != nil {
+			return nil, fmt.Errorf("parsing predicted fundings venues for %s: %w", coin, err)
+		}
+
+		venues := make([]PredictedFundingVenue, 0, len(venuesRaw))
+		for j, venueEntryRaw := range venuesRaw {
+			var venueEntry []json.RawMessage
+			if err := json.Unmarshal(venueEntryRaw, &venueEntry); err != nil {
+				return nil, fmt.Errorf("parsing predicted fundings venue entry %s[%d]: %w", coin, j, err)
+			}
+			if len(venueEntry) != 2 {
+				return nil, fmt.Errorf("parsing predicted fundings venue entry %s[%d]: expected length 2, got %d", coin, j, len(venueEntry))
+			}
+
+			var venue string
+			if err := json.Unmarshal(venueEntry[0], &venue); err != nil {
+				return nil, fmt.Errorf("parsing predicted fundings venue name %s[%d]: %w", coin, j, err)
+			}
+
+			var details PredictedFundingVenueDetails
+			if err := json.Unmarshal(venueEntry[1], &details); err != nil {
+				return nil, fmt.Errorf("parsing predicted fundings venue details %s[%d]: %w", coin, j, err)
+			}
+
+			venues = append(venues, PredictedFundingVenue{
+				Venue:   venue,
+				Details: details,
+			})
+		}
+
+		result = append(result, PredictedFundingCoin{
+			Coin:   coin,
+			Venues: venues,
+		})
+	}
+
+	return result, nil
 }
 
 func (PredictedFundingsResult) Headers() []string {
@@ -351,16 +451,12 @@ func (PredictedFundingsResult) Headers() []string {
 
 func (p PredictedFundingsResult) Rows() [][]string {
 	rows := make([][]string, 0, len(p))
-	for _, entry := range p {
-		if len(entry) < 3 {
-			continue
+	for _, coinEntry := range p {
+		for _, venueEntry := range coinEntry.Venues {
+			rate := venueEntry.Details.FundingRate
+			apr := computeAPR(rate)
+			rows = append(rows, []string{coinEntry.Coin, venueEntry.Venue, rate, apr})
 		}
-		var coin, venue, rate string
-		json.Unmarshal(entry[0], &coin)  //nolint:errcheck // best-effort
-		json.Unmarshal(entry[1], &venue) //nolint:errcheck // best-effort
-		json.Unmarshal(entry[2], &rate)  //nolint:errcheck // best-effort
-		apr := computeAPR(rate)
-		rows = append(rows, []string{coin, venue, rate, apr})
 	}
 	return rows
 }

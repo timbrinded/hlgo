@@ -48,6 +48,10 @@ type perpMeta struct {
 	Universe []perpAsset `json:"universe"`
 }
 
+type perpDex struct {
+	Name string `json:"name"`
+}
+
 // perpAsset is a single entry in the perp universe array.
 type perpAsset struct {
 	Name       string `json:"name"`
@@ -176,7 +180,7 @@ func (r *CachingResolver) ensureLoaded(ctx context.Context) error {
 	spotData, spotFresh := r.cache.read("spot_meta.json", r.ttl, now)
 
 	if perpFresh && spotFresh {
-		if err := r.buildMaps(perpData, spotData); err == nil {
+		if err := r.buildMaps(ctx, perpData, spotData, false); err == nil {
 			r.loaded = true
 			return nil
 		}
@@ -184,16 +188,16 @@ func (r *CachingResolver) ensureLoaded(ctx context.Context) error {
 	}
 
 	// Fetch from API.
-	perpData, err := r.fetchMeta(ctx, "meta")
+	perpData, err := r.fetchMeta(ctx, "meta", "")
 	if err != nil {
 		return err
 	}
-	spotData, err = r.fetchMeta(ctx, "spotMeta")
+	spotData, err = r.fetchMeta(ctx, "spotMeta", "")
 	if err != nil {
 		return err
 	}
 
-	if err := r.buildMaps(perpData, spotData); err != nil {
+	if err := r.buildMaps(ctx, perpData, spotData, true); err != nil {
 		return err
 	}
 
@@ -206,12 +210,16 @@ func (r *CachingResolver) ensureLoaded(ctx context.Context) error {
 }
 
 // fetchMeta sends a typed info request and returns the raw JSON bytes.
-func (r *CachingResolver) fetchMeta(ctx context.Context, metaType string) ([]byte, error) {
-	return r.client.PostInfo(ctx, map[string]string{"type": metaType})
+func (r *CachingResolver) fetchMeta(ctx context.Context, metaType, dex string) ([]byte, error) {
+	req := map[string]string{"type": metaType}
+	if dex != "" {
+		req["dex"] = dex
+	}
+	return r.client.PostInfo(ctx, req)
 }
 
 // buildMaps parses perp and spot metadata and populates the lookup maps.
-func (r *CachingResolver) buildMaps(perpData, spotData []byte) error {
+func (r *CachingResolver) buildMaps(ctx context.Context, perpData, spotData []byte, includeHIP3 bool) error {
 	var pm perpMeta
 	if err := json.Unmarshal(perpData, &pm); err != nil {
 		return output.NewCLIError(output.ErrAPI, "failed to parse perp metadata").
@@ -255,7 +263,7 @@ func (r *CachingResolver) buildMaps(perpData, spotData []byte) error {
 				WithDetails("tokenIndex", strconv.Itoa(baseIdx))
 		}
 		info := &AssetInfo{
-			AssetID:    10000 + token.Index, // spot asset ID = 10000 + index
+			AssetID:    10000 + market.Index, // spot asset ID = 10000 + spot market index
 			Coin:       token.Name,
 			SzDecimals: token.SzDecimals,
 			IsSpot:     true,
@@ -267,7 +275,83 @@ func (r *CachingResolver) buildMaps(perpData, spotData []byte) error {
 		spotMap[marketKey] = info
 	}
 
+	if includeHIP3 {
+		r.appendHIP3Perps(ctx, perpMap)
+	}
+
 	r.perpMap = perpMap
 	r.spotMap = spotMap
 	return nil
+}
+
+// appendHIP3Perps fetches HIP-3 dex metadata and appends it to the perp map.
+// This is best-effort so resolution for base perps and spot still works even if
+// HIP-3 metadata calls are unavailable.
+func (r *CachingResolver) appendHIP3Perps(ctx context.Context, perpMap map[string]*AssetInfo) {
+	offsets, err := r.fetchPerpDexOffsets(ctx)
+	if err != nil {
+		return
+	}
+
+	for dex, offset := range offsets {
+		metaRaw, err := r.fetchMeta(ctx, "meta", dex)
+		if err != nil {
+			continue
+		}
+
+		var pm perpMeta
+		if err := json.Unmarshal(metaRaw, &pm); err != nil {
+			continue
+		}
+
+		for i, asset := range pm.Universe {
+			upper := strings.ToUpper(asset.Name)
+			perpMap[upper] = &AssetInfo{
+				AssetID:    offset + i,
+				Coin:       asset.Name,
+				SzDecimals: asset.SzDecimals,
+				IsSpot:     false,
+			}
+		}
+	}
+}
+
+// fetchPerpDexOffsets returns dex name to asset offset mapping.
+// Per the official Python SDK, builder-deployed dexes are offset by:
+// 110000 + i*10000, where i is the position in perpDexs()[1:].
+func (r *CachingResolver) fetchPerpDexOffsets(ctx context.Context) (map[string]int, error) {
+	raw, err := r.client.PostInfo(ctx, map[string]string{"type": "perpDexs"})
+	if err != nil {
+		return nil, err
+	}
+
+	var entries []json.RawMessage
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return nil, err
+	}
+
+	offsets := make(map[string]int)
+	hip3Idx := 0
+	for i, entry := range entries {
+		// Index 0 is reserved for the validator perp dex.
+		if i == 0 {
+			continue
+		}
+		if string(entry) == "null" {
+			continue
+		}
+
+		var d perpDex
+		if err := json.Unmarshal(entry, &d); err != nil {
+			continue
+		}
+		if d.Name == "" {
+			continue
+		}
+
+		offsets[d.Name] = 110000 + hip3Idx*10000
+		hip3Idx++
+	}
+
+	return offsets, nil
 }

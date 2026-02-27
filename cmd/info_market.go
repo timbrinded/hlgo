@@ -127,19 +127,37 @@ func newInfoBookCmd() *cobra.Command {
 			cfg := config.FromContext(cmd.Context())
 			ic := buildInfoClient(cfg)
 			coin := args[0]
-			sigfigs, _ := cmd.Flags().GetInt("sigfigs") //nolint:errcheck // known flag
-			depth, _ := cmd.Flags().GetInt("depth")     //nolint:errcheck // known flag
+			sigfigs, _ := cmd.Flags().GetInt("sigfigs")   //nolint:errcheck // known flag
+			depth, _ := cmd.Flags().GetInt("depth")       //nolint:errcheck // known flag
+			mantissa, _ := cmd.Flags().GetInt("mantissa") //nolint:errcheck // known flag
 
 			var nSigFigs *int
 			if cmd.Flags().Changed("sigfigs") {
 				nSigFigs = &sigfigs
 			}
 
-			if cfg.DryRun {
-				return printResult(cmd, cfg, mustMarshal(info.L2BookRequest{Type: "l2Book", Coin: coin, NSigFigs: nSigFigs}), nil)
+			var mantissaPtr *int
+			if cmd.Flags().Changed("mantissa") {
+				if !cmd.Flags().Changed("sigfigs") || sigfigs != 5 {
+					return output.NewCLIError(output.ErrValidation, "mantissa requires --sigfigs 5")
+				}
+				if mantissa != 1 && mantissa != 2 && mantissa != 5 {
+					return output.NewCLIError(output.ErrValidation, "mantissa must be one of 1, 2, or 5").
+						WithDetails("mantissa", mantissa)
+				}
+				mantissaPtr = &mantissa
 			}
 
-			raw, err := ic.L2Book(cmd.Context(), coin, nSigFigs)
+			if cfg.DryRun {
+				return printResult(cmd, cfg, mustMarshal(info.L2BookRequest{
+					Type:     "l2Book",
+					Coin:     coin,
+					NSigFigs: nSigFigs,
+					Mantissa: mantissaPtr,
+				}), nil)
+			}
+
+			raw, err := ic.L2Book(cmd.Context(), coin, nSigFigs, mantissaPtr)
 			if err != nil {
 				return err
 			}
@@ -162,6 +180,7 @@ func newInfoBookCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().Int("sigfigs", 0, "number of significant figures (passed to API)")
+	cmd.Flags().Int("mantissa", 0, "l2 aggregation mantissa (allowed only with --sigfigs 5: 1, 2, or 5)")
 	cmd.Flags().Int("depth", 0, "max levels per side (client-side truncation)")
 	return cmd
 }
@@ -235,8 +254,13 @@ func newInfoCandlesCmd() *cobra.Command {
 
 			if cfg.DryRun {
 				req := info.CandleSnapshotRequest{
-					Type: "candleSnapshot", Coin: coin, Interval: interval,
-					StartTime: startTime, EndTime: endTime,
+					Type: "candleSnapshot",
+					Req: info.CandleSnapshotReq{
+						Coin:      coin,
+						Interval:  interval,
+						StartTime: startTime,
+						EndTime:   endTime,
+					},
 				}
 				return printResult(cmd, cfg, mustMarshal(req), nil)
 			}

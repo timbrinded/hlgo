@@ -44,11 +44,15 @@ func TestExecutor_PlaceOrder_DryRun(t *testing.T) {
 	exec := NewExecutor(s, c, r, false)
 
 	result, err := exec.PlaceOrder(context.Background(), PlaceOrderInput{
-		Coin:   "BTC",
-		Side:   "buy",
-		Price:  decimal.NewFromInt(50000),
-		Size:   decimal.NewFromFloat(0.01),
-		Tif:    "Gtc",
+		Coin:  "BTC",
+		Side:  "buy",
+		Price: decimal.NewFromInt(50000),
+		Size:  decimal.NewFromFloat(0.01),
+		Tif:   "Gtc",
+		Builder: &BuilderInfo{
+			B: "0x1234567890abcdef1234567890abcdef12345678",
+			F: 10,
+		},
 		DryRun: true,
 	})
 	if err != nil {
@@ -65,6 +69,12 @@ func TestExecutor_PlaceOrder_DryRun(t *testing.T) {
 	}
 	if result.Action.Orders[0].P != "50000" {
 		t.Errorf("price = %q, want 50000", result.Action.Orders[0].P)
+	}
+	if result.Action.Builder == nil {
+		t.Fatal("expected builder in action")
+	}
+	if result.Action.Builder.F != 10 {
+		t.Errorf("builder fee = %d, want 10", result.Action.Builder.F)
 	}
 }
 
@@ -257,7 +267,7 @@ func TestExecutor_CancelOrders_DryRun(t *testing.T) {
 
 	result, err := exec.CancelOrders(context.Background(), []CancelWire{
 		{A: 0, O: 12345},
-	}, "", true)
+	}, "", true, nil)
 	if err != nil {
 		t.Fatalf("CancelOrders dry-run error: %v", err)
 	}
@@ -284,7 +294,7 @@ func TestExecutor_CancelByCloid_DryRun(t *testing.T) {
 
 	result, err := exec.CancelByCloid(context.Background(), []CancelByCloidWire{
 		{Asset: 0, Cloid: "my-id"},
-	}, "", true)
+	}, "", true, nil)
 	if err != nil {
 		t.Fatalf("CancelByCloid dry-run error: %v", err)
 	}

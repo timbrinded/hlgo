@@ -34,15 +34,23 @@ type OrderWire struct {
 
 // OrderAction is the wire-format action for placing orders.
 type OrderAction struct {
-	Type     string      `msgpack:"type" json:"type"`
-	Orders   []OrderWire `msgpack:"orders" json:"orders"`
-	Grouping string      `msgpack:"grouping" json:"grouping"`
+	Type     string       `msgpack:"type" json:"type"`
+	Orders   []OrderWire  `msgpack:"orders" json:"orders"`
+	Grouping string       `msgpack:"grouping" json:"grouping"`
+	Builder  *BuilderInfo `msgpack:"builder,omitempty" json:"builder,omitempty"`
+}
+
+// BuilderInfo configures optional builder fee routing on order actions.
+// b = builder address, f = fee in tenths of a basis point.
+type BuilderInfo struct {
+	B string `msgpack:"b" json:"b"`
+	F int    `msgpack:"f" json:"f"`
 }
 
 // CancelWire is the wire-format for cancelling by OID.
 type CancelWire struct {
-	A int   `msgpack:"a" json:"a"` // asset ID
-	O int64 `msgpack:"o" json:"o"` // order ID
+	A int    `msgpack:"a" json:"a"` // asset ID
+	O uint64 `msgpack:"o" json:"o"` // order ID
 }
 
 // CancelAction is the wire-format action for cancelling orders by OID.
