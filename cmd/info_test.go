@@ -17,8 +17,8 @@ import (
 // testMetaJSON is minimal perp metadata for testing.
 const testMetaJSON = `{"universe":[{"name":"BTC","szDecimals":3},{"name":"ETH","szDecimals":4}]}`
 
-// testSpotMetaJSON is minimal spot metadata for testing.
-const testSpotMetaJSON = `{"universe":[{"name":"PURR/USDC","index":0,"tokens":[{"name":"PURR","index":1,"szDecimals":2}]}]}`
+// testSpotMetaJSON is minimal spot metadata for testing (matches real API shape).
+const testSpotMetaJSON = `{"tokens":[{"name":"USDC","szDecimals":6,"index":0},{"name":"PURR","szDecimals":2,"index":1}],"universe":[{"name":"PURR/USDC","index":0,"tokens":[1,0]}]}`
 
 // newTestRootWithServer creates a root command configured to use the given test server URL.
 // It writes a temporary config file pointing agent_key_env at a set env var,

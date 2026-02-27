@@ -18,7 +18,7 @@ type TriggerParams struct {
 }
 
 // BuildOrderAction constructs an OrderAction from order parameters.
-// When any order has a trigger, grouping is set to "normalTpSl"; otherwise "na".
+// When any order has a trigger, grouping is set to "normalTpsl"; otherwise "na".
 func BuildOrderAction(orders []OrderParams, triggers []*TriggerParams) *OrderAction {
 	wires := make([]OrderWire, len(orders))
 	hasTrigger := false
@@ -53,7 +53,7 @@ func BuildOrderAction(orders []OrderParams, triggers []*TriggerParams) *OrderAct
 
 	grouping := "na"
 	if hasTrigger {
-		grouping = "normalTpSl"
+		grouping = "normalTpsl"
 	}
 
 	return &OrderAction{

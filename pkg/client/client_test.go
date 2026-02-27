@@ -75,10 +75,10 @@ func TestPostExchange_Success(t *testing.T) {
 			t.Errorf("nonce = %s, want 1700000000000", nonce)
 		}
 
-		var sig string
+		var sig SignatureWire
 		json.Unmarshal(req["signature"], &sig)
-		if sig != "0xdeadbeef" {
-			t.Errorf("signature = %q, want %q", sig, "0xdeadbeef")
+		if sig.R != "0xdead" || sig.S != "0xbeef" || sig.V != 27 {
+			t.Errorf("signature = %+v, want {R:0xdead S:0xbeef V:27}", sig)
 		}
 
 		// Vault address should be present.
@@ -95,7 +95,7 @@ func TestPostExchange_Success(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	action := map[string]any{"type": "order", "orders": []any{}}
-	result, err := c.PostExchange(context.Background(), action, 1700000000000, "0xdeadbeef", "0xvault")
+	result, err := c.PostExchange(context.Background(), action, 1700000000000, SignatureWire{R: "0xdead", S: "0xbeef", V: 27}, "0xvault")
 	if err != nil {
 		t.Fatalf("PostExchange returned error: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestPostExchange_OmitsEmptyVaultAddress(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
-	_, err := c.PostExchange(context.Background(), map[string]string{"type": "cancel"}, 1700000000000, "0xsig", "")
+	_, err := c.PostExchange(context.Background(), map[string]string{"type": "cancel"}, 1700000000000, SignatureWire{R: "0x1", S: "0x2", V: 27}, "")
 	if err != nil {
 		t.Fatalf("PostExchange returned error: %v", err)
 	}

@@ -55,15 +55,18 @@ type perpAsset struct {
 }
 
 // spotMeta is the response shape from POST /info {"type":"spotMeta"}.
+// The real API returns a two-level structure: a flat top-level "tokens" registry
+// and universe entries that reference tokens by integer index.
 type spotMeta struct {
 	Universe []spotMarket `json:"universe"`
+	Tokens   []spotToken  `json:"tokens"` // top-level token registry
 }
 
 // spotMarket is a single spot market in the spot universe array.
 type spotMarket struct {
-	Name   string      `json:"name"`
-	Index  int         `json:"index"`
-	Tokens []spotToken `json:"tokens"`
+	Name   string `json:"name"`
+	Index  int    `json:"index"`
+	Tokens []int  `json:"tokens"` // indices into spotMeta.Tokens
 }
 
 // spotToken is a token within a spot market.
@@ -232,13 +235,25 @@ func (r *CachingResolver) buildMaps(perpData, spotData []byte) error {
 		}
 	}
 
+	// Build lookup from token index → spotToken for resolving market references.
+	tokenByIndex := make(map[int]spotToken, len(sm.Tokens))
+	for _, tok := range sm.Tokens {
+		tokenByIndex[tok.Index] = tok
+	}
+
 	spotMap := make(map[string]*AssetInfo, len(sm.Universe))
 	for _, market := range sm.Universe {
 		if len(market.Tokens) == 0 {
 			continue
 		}
-		// The first token is the base token of the spot pair.
-		token := market.Tokens[0]
+		// The first element is the base token index of the spot pair.
+		baseIdx := market.Tokens[0]
+		token, ok := tokenByIndex[baseIdx]
+		if !ok {
+			return output.NewCLIError(output.ErrAPI, "spot market references unknown token index").
+				WithDetails("market", market.Name).
+				WithDetails("tokenIndex", strconv.Itoa(baseIdx))
+		}
 		info := &AssetInfo{
 			AssetID:    10000 + token.Index, // spot asset ID = 10000 + index
 			Coin:       token.Name,

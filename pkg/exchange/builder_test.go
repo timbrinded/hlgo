@@ -48,7 +48,7 @@ func TestBuildOrderAction_WithTrigger(t *testing.T) {
 
 	action := BuildOrderAction(params, triggers)
 
-	if action.Grouping != "normalTpSl" {
+	if action.Grouping != "normalTpsl" {
 		t.Errorf("Grouping = %q, want normalTpSl", action.Grouping)
 	}
 	if action.Orders[0].T.Trigger == nil {

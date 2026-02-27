@@ -152,7 +152,7 @@ func TestExecutor_PlaceOrder_WithTpSlTriggers(t *testing.T) {
 	if len(action.Orders) != 3 {
 		t.Fatalf("expected 3 order wires, got %d", len(action.Orders))
 	}
-	if action.Grouping != "normalTpSl" {
+	if action.Grouping != "normalTpsl" {
 		t.Errorf("Grouping = %q, want normalTpSl", action.Grouping)
 	}
 
@@ -233,7 +233,7 @@ func TestExecutor_PlaceOrder_TpOnlyTrigger(t *testing.T) {
 	if len(result.Action.Orders) != 2 {
 		t.Fatalf("expected 2 order wires, got %d", len(result.Action.Orders))
 	}
-	if result.Action.Grouping != "normalTpSl" {
+	if result.Action.Grouping != "normalTpsl" {
 		t.Errorf("Grouping = %q, want normalTpSl", result.Action.Grouping)
 	}
 

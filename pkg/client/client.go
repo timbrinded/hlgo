@@ -54,12 +54,20 @@ func NewClient(baseURL string, opts ...Option) *Client {
 	return c
 }
 
+// SignatureWire is the structured signature format expected by the /exchange endpoint.
+// Each ECDSA component (r, s, v) is sent as a separate JSON field.
+type SignatureWire struct {
+	R string `json:"r"`
+	S string `json:"s"`
+	V int    `json:"v"`
+}
+
 // exchangeRequest is the envelope for POST /exchange.
 type exchangeRequest struct {
-	Action       any    `json:"action"`
-	Nonce        int64  `json:"nonce"`
-	Signature    string `json:"signature"`
-	VaultAddress string `json:"vaultAddress,omitempty"`
+	Action       any           `json:"action"`
+	Nonce        int64         `json:"nonce"`
+	Signature    SignatureWire `json:"signature"`
+	VaultAddress string        `json:"vaultAddress,omitempty"`
 }
 
 // PostInfo sends a request to the /info endpoint and returns the raw JSON response.
@@ -71,7 +79,7 @@ func (c *Client) PostInfo(ctx context.Context, request any) (json.RawMessage, er
 // PostExchange sends a signed action to the /exchange endpoint.
 // The action, nonce, and signature are wrapped in the standard envelope.
 // vaultAddress is included only when non-empty.
-func (c *Client) PostExchange(ctx context.Context, action any, nonce int64, signature string, vaultAddress string) (json.RawMessage, error) {
+func (c *Client) PostExchange(ctx context.Context, action any, nonce int64, signature SignatureWire, vaultAddress string) (json.RawMessage, error) {
 	body := exchangeRequest{
 		Action:       action,
 		Nonce:        nonce,

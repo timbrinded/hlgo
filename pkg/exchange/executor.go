@@ -2,6 +2,7 @@ package exchange
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"time"
 
@@ -13,6 +14,15 @@ import (
 	"github.com/timbrinded/hlgo/pkg/signer"
 	"github.com/timbrinded/hlgo/pkg/wire"
 )
+
+// sigToWire converts a signer.Signature to the structured wire format expected by the exchange API.
+func sigToWire(sig *signer.Signature) client.SignatureWire {
+	return client.SignatureWire{
+		R: "0x" + hex.EncodeToString(sig.R[:]),
+		S: "0x" + hex.EncodeToString(sig.S[:]),
+		V: int(sig.V),
+	}
+}
 
 // Executor orchestrates the resolve → validate → sign → send pipeline for exchange actions.
 type Executor struct {
@@ -128,7 +138,7 @@ func (e *Executor) PlaceOrder(ctx context.Context, input PlaceOrderInput) (*Plac
 			Tpsl:      trig.tpsl,
 		}})
 		action.Orders = append(action.Orders, trigAction.Orders...)
-		action.Grouping = "normalTpSl"
+		action.Grouping = "normalTpsl"
 	}
 
 	resolved := &ResolvedOrder{
@@ -165,7 +175,7 @@ func (e *Executor) PlaceOrder(ctx context.Context, input PlaceOrderInput) (*Plac
 	}
 
 	// 8. Send to exchange.
-	resp, err := e.client.PostExchange(ctx, action, nonce, sig.Hex(), input.VaultAddr)
+	resp, err := e.client.PostExchange(ctx, action, nonce, sigToWire(sig), input.VaultAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +208,7 @@ func (e *Executor) CancelOrders(ctx context.Context, cancels []CancelWire, vault
 		return nil, err
 	}
 
-	return e.client.PostExchange(ctx, action, nonce, sig.Hex(), vaultAddr)
+	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), vaultAddr)
 }
 
 // CancelByCloid cancels orders by client order ID.
@@ -222,5 +232,5 @@ func (e *Executor) CancelByCloid(ctx context.Context, cancels []CancelByCloidWir
 		return nil, err
 	}
 
-	return e.client.PostExchange(ctx, action, nonce, sig.Hex(), vaultAddr)
+	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), vaultAddr)
 }

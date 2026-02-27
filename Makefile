@@ -8,12 +8,26 @@ BIN_DIR  := bin
 DIST_DIR := dist
 TEST_OUT := /tmp/hlgo-test.out
 
-.PHONY: build test test-cover test-integration vet fmt lint tidy check clean install \
+.PHONY: build test test\:ci test-cover test-integration vet fmt lint tidy check clean install \
         build-linux build-darwin build-windows dist
 
-# run-tests: shared recipe for running go test with summary.
-# Usage: $(call run-tests,<extra go test flags>)
-define run-tests
+# run-tests-quiet: local-friendly test runner — shows only failures + summary.
+# Usage: $(call run-tests-quiet,<extra go test flags>)
+define run-tests-quiet
+	@go test -race -count=1 $(1) ./... 2>&1 | tee $(TEST_OUT); \
+	status=$${PIPESTATUS[0]}; \
+	echo ""; \
+	echo "──────────────────────────────────────────"; \
+	pass=$$(grep -c '^ok' $(TEST_OUT) || true); \
+	fail=$$(grep -c '^FAIL' $(TEST_OUT) || true); \
+	echo "Tests: $$pass passed, $$fail failed"; \
+	echo "──────────────────────────────────────────"; \
+	exit $$status
+endef
+
+# run-tests-verbose: CI-friendly — full verbose output + summary.
+# Usage: $(call run-tests-verbose,<extra go test flags>)
+define run-tests-verbose
 	@go test -v -race -count=1 $(1) ./... 2>&1 | tee $(TEST_OUT); \
 	status=$${PIPESTATUS[0]}; \
 	echo ""; \
@@ -29,19 +43,23 @@ endef
 build: fmt vet
 	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/hlgo .
 
-## test: run all tests with race detector (verbose output + summary)
+## test: run all tests — quiet output, shows only failures + summary
 test:
-	$(call run-tests,)
+	$(call run-tests-quiet,)
+
+## test:ci: run all tests — full verbose output for CI pipelines
+test\:ci:
+	$(call run-tests-verbose,)
 
 ## test-cover: test with coverage report
 test-cover:
-	$(call run-tests,-coverprofile=coverage.out)
+	$(call run-tests-quiet,-coverprofile=coverage.out)
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report: coverage.html"
 
 ## test-integration: run integration tests (requires testnet env vars)
 test-integration:
-	$(call run-tests,-tags=integration -timeout=5m)
+	$(call run-tests-quiet,-tags=integration -timeout=5m)
 
 ## vet: static analysis
 vet:

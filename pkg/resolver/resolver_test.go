@@ -30,27 +30,19 @@ func testPerpMeta() string {
 	}`
 }
 
-// testSpotMeta returns a realistic spot meta response.
+// testSpotMeta returns a realistic spot meta response matching the real API shape.
+// Top-level "tokens" is the registry; universe[].tokens are integer indices into it.
 // The token index determines the asset ID: 10000 + index.
 func testSpotMeta() string {
 	return `{
+		"tokens": [
+			{"name": "USDC", "index": 0, "szDecimals": 6},
+			{"name": "PURR", "index": 1, "szDecimals": 0},
+			{"name": "HFUN", "index": 2, "szDecimals": 3}
+		],
 		"universe": [
-			{
-				"name": "PURR/USDC",
-				"index": 0,
-				"tokens": [
-					{"name": "PURR", "index": 1, "szDecimals": 0},
-					{"name": "USDC", "index": 0, "szDecimals": 6}
-				]
-			},
-			{
-				"name": "HFUN/USDC",
-				"index": 1,
-				"tokens": [
-					{"name": "HFUN", "index": 2, "szDecimals": 3},
-					{"name": "USDC", "index": 0, "szDecimals": 6}
-				]
-			}
+			{"name": "PURR/USDC", "index": 0, "tokens": [1, 0]},
+			{"name": "HFUN/USDC", "index": 1, "tokens": [2, 0]}
 		]
 	}`
 }
@@ -588,10 +580,8 @@ func TestPerpPriorityOverSpot(t *testing.T) {
 	dc.write("meta.json", []byte(`{"universe":[{"name":"BTC","szDecimals":5}]}`), now)
 	// BTC also appears as a spot token.
 	dc.write("spot_meta.json", []byte(`{
-		"universe":[{
-			"name":"BTC/USDC","index":0,
-			"tokens":[{"name":"BTC","index":99,"szDecimals":8},{"name":"USDC","index":0,"szDecimals":6}]
-		}]
+		"tokens":[{"name":"USDC","index":0,"szDecimals":6},{"name":"BTC","index":99,"szDecimals":8}],
+		"universe":[{"name":"BTC/USDC","index":0,"tokens":[99,0]}]
 	}`), now)
 
 	c := client.NewClient("http://127.0.0.1:1")
@@ -682,6 +672,73 @@ func TestDiskCache_MissingFile(t *testing.T) {
 	}
 }
 
+func TestBuildMaps_RealAPIFormat(t *testing.T) {
+	// The real Hyperliquid API returns spotMeta with a two-level structure:
+	// - top-level "tokens" array: full token metadata objects
+	// - universe[].tokens: integer indices into the top-level array
+	// This test uses the exact shape returned by the live API.
+	cacheDir := t.TempDir()
+	now := time.Now()
+	dc := newDiskCache(cacheDir)
+
+	dc.write("meta.json", []byte(`{"universe":[{"name":"BTC","szDecimals":5}]}`), now)
+	dc.write("spot_meta.json", []byte(`{
+		"tokens":[
+			{"name":"USDC","szDecimals":6,"index":0},
+			{"name":"PURR","szDecimals":0,"index":1}
+		],
+		"universe":[
+			{"name":"PURR/USDC","index":0,"tokens":[1,0]}
+		]
+	}`), now)
+
+	c := client.NewClient("http://127.0.0.1:1")
+	r := NewResolver(c, cacheDir, 5*time.Minute)
+	ctx := context.Background()
+
+	info, err := r.ResolveAsset(ctx, "PURR")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.AssetID != 10001 {
+		t.Errorf("AssetID = %d, want 10001 (10000 + token index 1)", info.AssetID)
+	}
+	if info.Coin != "PURR" {
+		t.Errorf("Coin = %q, want %q", info.Coin, "PURR")
+	}
+	if info.SzDecimals != 0 {
+		t.Errorf("SzDecimals = %d, want 0", info.SzDecimals)
+	}
+	if !info.IsSpot {
+		t.Error("IsSpot = false, want true")
+	}
+}
+
+func TestBuildMaps_TokenIndexOutOfBounds(t *testing.T) {
+	// If a market references a token index not in the top-level array, buildMaps should error.
+	// Use a server that returns the bad data (so the cache-fallthrough also fails).
+	badSpot := `{"tokens":[{"name":"USDC","szDecimals":6,"index":0}],"universe":[{"name":"BAD/USDC","index":0,"tokens":[99,0]}]}`
+	srv := newTestMetaServer(`{"universe":[]}`, badSpot)
+	defer srv.Close()
+
+	c := client.NewClient(srv.URL)
+	r := NewResolver(c, t.TempDir(), 5*time.Minute)
+	ctx := context.Background()
+
+	_, err := r.ResolveAsset(ctx, "BAD")
+	if err == nil {
+		t.Fatal("expected error for out-of-bounds token index")
+	}
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected *output.CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrAPI {
+		t.Errorf("error code = %s, want %s", cliErr.Code, output.ErrAPI)
+	}
+}
+
 func TestSpotMarketWithEmptyTokens(t *testing.T) {
 	cacheDir := t.TempDir()
 	now := time.Now()
@@ -690,10 +747,8 @@ func TestSpotMarketWithEmptyTokens(t *testing.T) {
 	dc.write("meta.json", []byte(`{"universe":[]}`), now)
 	// A spot market with no tokens should be skipped without error.
 	dc.write("spot_meta.json", []byte(`{
-		"universe":[{
-			"name":"EMPTY/USDC","index":0,
-			"tokens":[]
-		}]
+		"tokens":[{"name":"USDC","index":0,"szDecimals":6}],
+		"universe":[{"name":"EMPTY/USDC","index":0,"tokens":[]}]
 	}`), now)
 
 	c := client.NewClient("http://127.0.0.1:1")
