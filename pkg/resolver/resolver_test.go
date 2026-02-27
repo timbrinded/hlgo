@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -346,6 +348,194 @@ func TestResolveSpotByMarketName(t *testing.T) {
 	}
 }
 
+func TestResolveSpotByFriendlyPairAlias_FromTokenNames(t *testing.T) {
+	cacheDir := t.TempDir()
+	now := time.Now()
+	dc := newDiskCache(cacheDir)
+
+	dc.write("meta.json", []byte(`{"universe":[{"name":"BTC","szDecimals":5}]}`), now)
+	dc.write("spot_meta.json", []byte(`{
+		"tokens":[
+			{"name":"USDC","szDecimals":6,"index":0},
+			{"name":"UETH","szDecimals":4,"index":221,"fullName":"Unit Ethereum"}
+		],
+		"universe":[
+			{"name":"@151","index":151,"tokens":[221,0],"isCanonical":true}
+		]
+	}`), now)
+
+	c := client.NewClient("http://127.0.0.1:1")
+	r := NewResolver(c, cacheDir, 5*time.Minute)
+	ctx := context.Background()
+
+	info, err := r.ResolveAsset(ctx, "UETH/USDC")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.AssetID != 10151 {
+		t.Errorf("AssetID = %d, want 10151", info.AssetID)
+	}
+	if !info.IsSpot {
+		t.Error("IsSpot = false, want true")
+	}
+
+	// Friendly alias strips the unit prefix.
+	info, err = r.ResolveAsset(ctx, "ETH/USDC")
+	if err != nil {
+		t.Fatalf("unexpected error for ETH/USDC: %v", err)
+	}
+	if info.AssetID != 10151 {
+		t.Errorf("AssetID = %d, want 10151", info.AssetID)
+	}
+	if !info.IsSpot {
+		t.Error("IsSpot = false, want true")
+	}
+}
+
+func TestResolveSpotByFriendlyPairAlias_MultipleUnitPrefixes(t *testing.T) {
+	cacheDir := t.TempDir()
+	now := time.Now()
+	dc := newDiskCache(cacheDir)
+
+	dc.write("meta.json", []byte(`{"universe":[{"name":"BTC","szDecimals":5}]}`), now)
+	dc.write("spot_meta.json", []byte(`{
+		"tokens":[
+			{"name":"USDC","szDecimals":6,"index":0},
+			{"name":"UUVIRT","szDecimals":4,"index":10,"fullName":"Unit Virtual"}
+		],
+		"universe":[
+			{"name":"@1","index":1,"tokens":[10,0],"isCanonical":true}
+		]
+	}`), now)
+
+	c := client.NewClient("http://127.0.0.1:1")
+	r := NewResolver(c, cacheDir, 5*time.Minute)
+	ctx := context.Background()
+
+	for _, pair := range []string{"UUVIRT/USDC", "UVIRT/USDC", "VIRT/USDC"} {
+		info, err := r.ResolveAsset(ctx, pair)
+		if err != nil {
+			t.Fatalf("unexpected error for %s: %v", pair, err)
+		}
+		if info.AssetID != 10001 {
+			t.Fatalf("%s asset_id = %d, want 10001", pair, info.AssetID)
+		}
+	}
+}
+
+func TestResolveSpotByFriendlyPairAlias_NonUnitTokenDoesNotStripPrefix(t *testing.T) {
+	cacheDir := t.TempDir()
+	now := time.Now()
+	dc := newDiskCache(cacheDir)
+
+	dc.write("meta.json", []byte(`{"universe":[{"name":"BTC","szDecimals":5}]}`), now)
+	dc.write("spot_meta.json", []byte(`{
+		"tokens":[
+			{"name":"USDC","szDecimals":6,"index":0},
+			{"name":"UTEST","szDecimals":4,"index":11,"fullName":"Utility Test"}
+		],
+		"universe":[
+			{"name":"@2","index":2,"tokens":[11,0],"isCanonical":true}
+		]
+	}`), now)
+
+	c := client.NewClient("http://127.0.0.1:1")
+	r := NewResolver(c, cacheDir, 5*time.Minute)
+	ctx := context.Background()
+
+	_, err := r.ResolveAsset(ctx, "TEST/USDC")
+	if err == nil {
+		t.Fatal("expected TEST/USDC to fail: token is not marked as Unit")
+	}
+}
+
+func TestResolveSpotFriendlyPairAlias_PrefersUniqueCanonical(t *testing.T) {
+	cacheDir := t.TempDir()
+	now := time.Now()
+	dc := newDiskCache(cacheDir)
+
+	dc.write("meta.json", []byte(`{"universe":[{"name":"BTC","szDecimals":5}]}`), now)
+	dc.write("spot_meta.json", []byte(`{
+		"tokens":[
+			{"name":"USDC","szDecimals":6,"index":0},
+			{"name":"UETH","szDecimals":4,"index":221}
+		],
+		"universe":[
+			{"name":"@151","index":151,"tokens":[221,0],"isCanonical":false},
+			{"name":"@235","index":235,"tokens":[221,0],"isCanonical":true}
+		]
+	}`), now)
+
+	c := client.NewClient("http://127.0.0.1:1")
+	r := NewResolver(c, cacheDir, 5*time.Minute)
+	ctx := context.Background()
+
+	info, err := r.ResolveAsset(ctx, "UETH/USDC")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.AssetID != 10235 {
+		t.Errorf("AssetID = %d, want 10235 (canonical market index 235)", info.AssetID)
+	}
+}
+
+func TestResolveSpotFriendlyPairAlias_AmbiguousReturnsCandidates(t *testing.T) {
+	cacheDir := t.TempDir()
+	now := time.Now()
+	dc := newDiskCache(cacheDir)
+
+	dc.write("meta.json", []byte(`{"universe":[{"name":"BTC","szDecimals":5}]}`), now)
+	dc.write("spot_meta.json", []byte(`{
+		"tokens":[
+			{"name":"USDC","szDecimals":6,"index":0},
+			{"name":"UETH","szDecimals":4,"index":221}
+		],
+		"universe":[
+			{"name":"@151","index":151,"tokens":[221,0],"isCanonical":false},
+			{"name":"@235","index":235,"tokens":[221,0],"isCanonical":false}
+		]
+	}`), now)
+
+	c := client.NewClient("http://127.0.0.1:1")
+	r := NewResolver(c, cacheDir, 5*time.Minute)
+	ctx := context.Background()
+
+	_, err := r.ResolveAsset(ctx, "UETH/USDC")
+	if err == nil {
+		t.Fatal("expected ambiguity error")
+	}
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected *output.CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrValidation {
+		t.Errorf("error code = %s, want %s", cliErr.Code, output.ErrValidation)
+	}
+	if cliErr.Details["reason"] != "ambiguous_spot_pair" {
+		t.Errorf("details[reason] = %v, want ambiguous_spot_pair", cliErr.Details["reason"])
+	}
+
+	candidatesRaw, ok := cliErr.Details["candidates"].([]string)
+	if !ok {
+		t.Fatalf("details[candidates] type = %T, want []string", cliErr.Details["candidates"])
+	}
+	if len(candidatesRaw) != 2 {
+		t.Fatalf("len(candidates) = %d, want 2", len(candidatesRaw))
+	}
+	if !containsString(candidatesRaw, "@151") || !containsString(candidatesRaw, "@235") {
+		t.Errorf("candidates = %v, want @151 and @235", candidatesRaw)
+	}
+
+	hint, ok := cliErr.Details["hint"].(string)
+	if !ok {
+		t.Fatalf("details[hint] type = %T, want string", cliErr.Details["hint"])
+	}
+	if !strings.Contains(hint, "market index") {
+		t.Errorf("hint = %q, want market index guidance", hint)
+	}
+}
+
 func TestUnknownCoin_ReturnsValidationError(t *testing.T) {
 	r := newPreloadedResolver(t)
 	ctx := context.Background()
@@ -364,6 +554,63 @@ func TestUnknownCoin_ReturnsValidationError(t *testing.T) {
 	}
 	if cliErr.Details["coin"] != "FAKECOIN" {
 		t.Errorf("details[coin] = %v, want %q", cliErr.Details["coin"], "FAKECOIN")
+	}
+}
+
+func containsString(list []string, want string) bool {
+	for _, item := range list {
+		if item == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestUnitTokenAliases(t *testing.T) {
+	tests := []struct {
+		name  string
+		token spotToken
+		want  []string
+	}{
+		{
+			name:  "single unit prefix",
+			token: spotToken{Name: "UETH", FullName: "Unit Ethereum"},
+			want:  []string{"ETH"},
+		},
+		{
+			name:  "multiple unit prefixes",
+			token: spotToken{Name: "UUENA", FullName: "Unit Ethena"},
+			want:  []string{"UENA", "ENA"},
+		},
+		{
+			name:  "unit token without U prefix",
+			token: spotToken{Name: "AURA", FullName: "Unit AURA"},
+			want:  nil,
+		},
+		{
+			name:  "non unit token with U prefix",
+			token: spotToken{Name: "USDC", FullName: "USD Coin"},
+			want:  nil,
+		},
+		{
+			name:  "missing full name",
+			token: spotToken{Name: "UETH"},
+			want:  nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := unitTokenAliases(tc.token)
+			if len(got) != len(tc.want) {
+				t.Fatalf("len(aliases) = %d, want %d (%v)", len(got), len(tc.want), got)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("aliases[%d] = %q, want %q (%v)", i, got[i], tc.want[i], got)
+				}
+			}
+		})
 	}
 }
 
@@ -462,6 +709,186 @@ func TestResolveHIP3PerpCoin_WithDexOffset(t *testing.T) {
 	}
 	if info.IsSpot {
 		t.Error("IsSpot = true, want false")
+	}
+}
+
+func TestResolveHIP3PerpCoin_LoadsRequestedDexOnly(t *testing.T) {
+	var abcMetaCalls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"bad request"}`)
+			return
+		}
+
+		reqType, _ := req["type"].(string)
+		dex, _ := req["dex"].(string)
+
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case reqType == "meta" && dex == "":
+			fmt.Fprint(w, `{"universe":[{"name":"BTC","szDecimals":5}]}`)
+		case reqType == "spotMeta":
+			fmt.Fprint(w, `{"tokens":[{"name":"USDC","index":0,"szDecimals":6}],"universe":[{"name":"@0","index":0,"tokens":[0,0]}]}`)
+		case reqType == "perpDexs":
+			fmt.Fprint(w, `[null,{"name":"abc"},{"name":"xyz"}]`)
+		case reqType == "meta" && dex == "abc":
+			atomic.AddInt32(&abcMetaCalls, 1)
+			fmt.Fprint(w, `{"universe":[{"name":"abc:ONE","szDecimals":3}]}`)
+		case reqType == "meta" && dex == "xyz":
+			fmt.Fprint(w, `{"universe":[{"name":"xyz:TSLA","szDecimals":3}]}`)
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, `{"error":"unexpected request type=%s dex=%s"}`, reqType, dex)
+		}
+	}))
+	defer srv.Close()
+
+	c := client.NewClient(srv.URL)
+	r := NewResolver(c, t.TempDir(), 5*time.Minute)
+	ctx := context.Background()
+
+	info, err := r.ResolveAsset(ctx, "xyz:TSLA")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// xyz is in position 2 => 110000 + (2-1)*10000 + 0 = 120000.
+	if info.AssetID != 120000 {
+		t.Fatalf("asset_id = %d, want 120000", info.AssetID)
+	}
+	if calls := atomic.LoadInt32(&abcMetaCalls); calls != 0 {
+		t.Fatalf("abc dex metadata should not be fetched, got %d calls", calls)
+	}
+}
+
+func TestResolveAsset_NonHIP3CoinSkipsPerpDexs(t *testing.T) {
+	var perpDexCalls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		reqType, _ := req["type"].(string)
+		w.Header().Set("Content-Type", "application/json")
+		switch reqType {
+		case "meta":
+			fmt.Fprint(w, testPerpMeta())
+		case "spotMeta":
+			fmt.Fprint(w, testSpotMeta())
+		case "perpDexs":
+			atomic.AddInt32(&perpDexCalls, 1)
+			fmt.Fprint(w, `[null,{"name":"xyz"}]`)
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	defer srv.Close()
+
+	c := client.NewClient(srv.URL)
+	r := NewResolver(c, t.TempDir(), 5*time.Minute)
+	ctx := context.Background()
+
+	info, err := r.ResolveAsset(ctx, "ETH")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.AssetID != 1 {
+		t.Fatalf("asset_id = %d, want 1", info.AssetID)
+	}
+	if calls := atomic.LoadInt32(&perpDexCalls); calls != 0 {
+		t.Fatalf("perpDexs should not be fetched for non-HIP3 coins, got %d calls", calls)
+	}
+}
+
+func TestResolveAsset_CoreMetadataTimeoutFailsFast(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		reqType, _ := req["type"].(string)
+		w.Header().Set("Content-Type", "application/json")
+		switch reqType {
+		case "meta":
+			time.Sleep(250 * time.Millisecond)
+			fmt.Fprint(w, testPerpMeta())
+		case "spotMeta":
+			fmt.Fprint(w, testSpotMeta())
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	defer srv.Close()
+
+	c := client.NewClient(srv.URL)
+	r := NewResolver(c, t.TempDir(), 5*time.Minute)
+	r.coreTimeout = 50 * time.Millisecond
+	ctx := context.Background()
+
+	start := time.Now()
+	_, err := r.ResolveAsset(ctx, "ETH")
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if elapsed > 500*time.Millisecond {
+		t.Fatalf("resolver timed out too slowly: %s", elapsed)
+	}
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected *output.CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrNetwork {
+		t.Fatalf("error code = %s, want %s", cliErr.Code, output.ErrNetwork)
+	}
+	if cliErr.Details["stage"] != "perp_meta" {
+		t.Fatalf("details[stage] = %v, want perp_meta", cliErr.Details["stage"])
+	}
+}
+
+func TestResolveAsset_HIP3TimeoutIsExplicit(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		reqType, _ := req["type"].(string)
+		w.Header().Set("Content-Type", "application/json")
+		switch reqType {
+		case "meta":
+			fmt.Fprint(w, testPerpMeta())
+		case "spotMeta":
+			fmt.Fprint(w, testSpotMeta())
+		case "perpDexs":
+			time.Sleep(250 * time.Millisecond)
+			fmt.Fprint(w, `[null,{"name":"xyz"}]`)
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	defer srv.Close()
+
+	c := client.NewClient(srv.URL)
+	r := NewResolver(c, t.TempDir(), 5*time.Minute)
+	r.hip3Timeout = 50 * time.Millisecond
+	ctx := context.Background()
+
+	_, err := r.ResolveAsset(ctx, "xyz:TSLA")
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected *output.CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrNetwork {
+		t.Fatalf("error code = %s, want %s", cliErr.Code, output.ErrNetwork)
+	}
+	if cliErr.Details["stage"] != "hip3_perp_dexs" {
+		t.Fatalf("details[stage] = %v, want hip3_perp_dexs", cliErr.Details["stage"])
 	}
 }
 

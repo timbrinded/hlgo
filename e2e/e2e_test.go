@@ -14,6 +14,8 @@ import (
 
 var binaryPath string
 
+const e2eTestPrivateKey = "0x0123456789012345678901234567890123456789012345678901234567890123"
+
 func TestMain(m *testing.M) {
 	// Build the binary once for all tests.
 	dir, err := os.MkdirTemp("", "hlgo-e2e")
@@ -30,15 +32,26 @@ func TestMain(m *testing.M) {
 		panic("cannot build hlgo: " + err.Error())
 	}
 
+	// Isolate E2E runs from user-local config and ensure dry-run order tests have a key.
+	if os.Getenv("HL_CONFIG") == "" {
+		_ = os.Setenv("HL_CONFIG", filepath.Join(dir, "e2e-config.yaml"))
+	}
+	if os.Getenv("HL_AGENT_KEY") == "" {
+		_ = os.Setenv("HL_AGENT_KEY", e2eTestPrivateKey)
+	}
+
 	os.Exit(m.Run())
 }
 
-// runHlgo runs the hlgo binary with the given args and returns stdout, stderr, and exit code.
-func runHlgo(t *testing.T, args ...string) (stdout, stderr string, exitCode int) {
+// runHlgoOnNetwork runs the hlgo binary against either testnet or mainnet.
+func runHlgoOnNetwork(t *testing.T, testnet bool, args ...string) (stdout, stderr string, exitCode int) {
 	t.Helper()
 
-	// Always use testnet for E2E tests.
-	fullArgs := append([]string{"--testnet"}, args...)
+	fullArgs := make([]string, 0, len(args)+1)
+	if testnet {
+		fullArgs = append(fullArgs, "--testnet")
+	}
+	fullArgs = append(fullArgs, args...)
 	cmd := exec.Command(binaryPath, fullArgs...)
 
 	var outBuf, errBuf strings.Builder
@@ -57,6 +70,12 @@ func runHlgo(t *testing.T, args ...string) (stdout, stderr string, exitCode int)
 		}
 	}
 	return stdout, stderr, exitCode
+}
+
+// runHlgo runs against testnet by default.
+func runHlgo(t *testing.T, args ...string) (stdout, stderr string, exitCode int) {
+	t.Helper()
+	return runHlgoOnNetwork(t, true, args...)
 }
 
 // parseJSONOutput parses stdout as JSON into a generic map.
@@ -248,6 +267,260 @@ func TestE2E_InfoRateLimit(t *testing.T) {
 	result := parseJSONOutput(t, stdout)
 	if result == nil {
 		t.Fatal("expected non-nil rate limit result")
+	}
+}
+
+type e2eSpotMeta struct {
+	Universe []e2eSpotMarket `json:"universe"`
+	Tokens   []e2eSpotToken  `json:"tokens"`
+}
+
+type e2eSpotMarket struct {
+	Name   string `json:"name"`
+	Index  int    `json:"index"`
+	Tokens []int  `json:"tokens"`
+}
+
+type e2eSpotToken struct {
+	Name     string  `json:"name"`
+	Index    int     `json:"index"`
+	FullName *string `json:"fullName"`
+}
+
+func loadSpotMeta(t *testing.T, testnet bool) *e2eSpotMeta {
+	t.Helper()
+
+	stdout, stderr, exitCode := runHlgoOnNetwork(t, testnet, "info", "meta", "--spot")
+	if exitCode != 0 {
+		t.Fatalf("spot meta query failed (exit %d): %s", exitCode, stderr)
+	}
+
+	var meta e2eSpotMeta
+	if err := json.Unmarshal([]byte(stdout), &meta); err != nil {
+		t.Fatalf("failed to parse spot meta: %v", err)
+	}
+	return &meta
+}
+
+func unitAlias(name string, fullName *string) string {
+	if fullName == nil {
+		return strings.ToUpper(name)
+	}
+	if !strings.HasPrefix(strings.ToUpper(strings.TrimSpace(*fullName)), "UNIT ") {
+		return strings.ToUpper(name)
+	}
+
+	alias := strings.ToUpper(name)
+	for len(alias) > 1 && strings.HasPrefix(alias, "U") {
+		alias = alias[1:]
+	}
+	return alias
+}
+
+func findUnitSpotPair(meta *e2eSpotMeta, unitFullName string) (pairAlias string, canonicalBase string, wantAsset int, ok bool) {
+	tokenByIndex := make(map[int]e2eSpotToken, len(meta.Tokens))
+	usdcIndex := -1
+	for _, token := range meta.Tokens {
+		tokenByIndex[token.Index] = token
+		if strings.EqualFold(token.Name, "USDC") {
+			usdcIndex = token.Index
+		}
+	}
+
+	var baseToken *e2eSpotToken
+	for i := range meta.Tokens {
+		token := &meta.Tokens[i]
+		if token.FullName != nil && *token.FullName == unitFullName {
+			if strings.HasPrefix(strings.ToUpper(token.Name), "U") {
+				baseToken = token
+				break
+			}
+			if baseToken == nil {
+				baseToken = token
+			}
+		}
+	}
+	if baseToken == nil {
+		return "", "", 0, false
+	}
+
+	var market *e2eSpotMarket
+	for i := range meta.Universe {
+		m := &meta.Universe[i]
+		if len(m.Tokens) < 2 || m.Tokens[0] != baseToken.Index {
+			continue
+		}
+		if market == nil {
+			market = m
+		}
+		if usdcIndex >= 0 && m.Tokens[1] == usdcIndex {
+			market = m
+			break
+		}
+	}
+	if market == nil {
+		return "", "", 0, false
+	}
+
+	quoteToken, ok := tokenByIndex[market.Tokens[1]]
+	if !ok {
+		return "", "", 0, false
+	}
+
+	baseAlias := unitAlias(baseToken.Name, baseToken.FullName)
+	quoteAlias := unitAlias(quoteToken.Name, quoteToken.FullName)
+	return baseAlias + "/" + quoteAlias, baseToken.Name, 10000 + market.Index, true
+}
+
+func assertSpotResolutionByAlias(t *testing.T, testnet bool, pairAlias, canonicalBase string, wantAsset int) {
+	t.Helper()
+
+	stdout, stderr, exitCode := runHlgoOnNetwork(t, testnet,
+		"order", "place",
+		"--coin", pairAlias,
+		"--side", "buy",
+		"--price", "1000",
+		"--size", "1",
+		"--dry-run",
+	)
+	if exitCode != 0 {
+		t.Fatalf("spot resolver dry-run failed for %s (exit %d): %s", pairAlias, exitCode, stderr)
+	}
+
+	result := parseJSONOutput(t, stdout)
+	resolved, ok := result["resolved"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected resolved map for %s, got %T", pairAlias, result["resolved"])
+	}
+
+	resolvedCoin, ok := resolved["coin"].(string)
+	if !ok {
+		t.Fatalf("resolved.coin type = %T, want string", resolved["coin"])
+	}
+	if resolvedCoin != canonicalBase {
+		t.Fatalf("resolved.coin = %s, want %s", resolvedCoin, canonicalBase)
+	}
+
+	isSpot, ok := resolved["is_spot"].(bool)
+	if !ok {
+		t.Fatalf("resolved.is_spot type = %T, want bool", resolved["is_spot"])
+	}
+	if !isSpot {
+		t.Fatalf("%s resolved as perp, want spot", pairAlias)
+	}
+
+	asset, ok := resolved["asset_id"].(float64)
+	if !ok {
+		t.Fatalf("resolved.asset_id type = %T, want number", resolved["asset_id"])
+	}
+	if int(asset) != wantAsset {
+		t.Fatalf("resolved.asset_id = %d, want %d", int(asset), wantAsset)
+	}
+}
+
+func assertPerpResolution(t *testing.T, testnet bool, coin string) {
+	t.Helper()
+	stdout, stderr, exitCode := runHlgoOnNetwork(t, testnet,
+		"order", "place",
+		"--coin", coin,
+		"--side", "buy",
+		"--price", "1000",
+		"--size", "1",
+		"--dry-run",
+	)
+	if exitCode != 0 {
+		t.Fatalf("resolver dry-run failed for %s (exit %d): %s", coin, exitCode, stderr)
+	}
+
+	result := parseJSONOutput(t, stdout)
+	resolved, ok := result["resolved"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected resolved map for %s, got %T", coin, result["resolved"])
+	}
+
+	if resolvedCoin, ok := resolved["coin"].(string); !ok || resolvedCoin != coin {
+		t.Fatalf("resolved.coin = %v, want %s", resolved["coin"], coin)
+	}
+
+	isSpot, ok := resolved["is_spot"].(bool)
+	if !ok {
+		t.Fatalf("resolved.is_spot type = %T, want bool", resolved["is_spot"])
+	}
+	if isSpot {
+		t.Fatalf("%s resolved as spot, want perp", coin)
+	}
+
+	if _, ok := resolved["asset_id"].(float64); !ok {
+		t.Fatalf("resolved.asset_id type = %T, want number", resolved["asset_id"])
+	}
+}
+
+func TestE2E_ResolverPerps_Testnet(t *testing.T) {
+	for _, coin := range []string{"ETH", "BTC", "SOL"} {
+		t.Run(coin, func(t *testing.T) {
+			assertPerpResolution(t, true, coin)
+		})
+	}
+}
+
+func TestE2E_ResolverPerps_Mainnet(t *testing.T) {
+	if os.Getenv("HL_E2E_MAINNET") != "1" {
+		t.Skip("skipping mainnet resolver checks (set HL_E2E_MAINNET=1 to enable)")
+	}
+	for _, coin := range []string{"ETH", "BTC", "SOL"} {
+		t.Run(coin, func(t *testing.T) {
+			assertPerpResolution(t, false, coin)
+		})
+	}
+}
+
+func TestE2E_ResolverSpotUnitAliases_Testnet(t *testing.T) {
+	meta := loadSpotMeta(t, true)
+	coins := []struct {
+		symbol   string
+		fullName string
+	}{
+		{symbol: "ETH", fullName: "Unit Ethereum"},
+		{symbol: "BTC", fullName: "Unit Bitcoin"},
+		{symbol: "SOL", fullName: "Unit Solana"},
+	}
+
+	for _, coin := range coins {
+		coin := coin
+		t.Run(coin.symbol, func(t *testing.T) {
+			pairAlias, canonicalBase, wantAsset, ok := findUnitSpotPair(meta, coin.fullName)
+			if !ok {
+				t.Skipf("no %s unit spot pair found on testnet", coin.symbol)
+			}
+			assertSpotResolutionByAlias(t, true, pairAlias, canonicalBase, wantAsset)
+		})
+	}
+}
+
+func TestE2E_ResolverSpotUnitAliases_Mainnet(t *testing.T) {
+	if os.Getenv("HL_E2E_MAINNET") != "1" {
+		t.Skip("skipping mainnet resolver checks (set HL_E2E_MAINNET=1 to enable)")
+	}
+
+	meta := loadSpotMeta(t, false)
+	coins := []struct {
+		symbol   string
+		fullName string
+	}{
+		{symbol: "ETH", fullName: "Unit Ethereum"},
+		{symbol: "BTC", fullName: "Unit Bitcoin"},
+		{symbol: "SOL", fullName: "Unit Solana"},
+	}
+
+	for _, coin := range coins {
+		coin := coin
+		t.Run(coin.symbol, func(t *testing.T) {
+			pairAlias, canonicalBase, wantAsset, ok := findUnitSpotPair(meta, coin.fullName)
+			if !ok {
+				t.Skipf("no %s unit spot pair found on mainnet", coin.symbol)
+			}
+			assertSpotResolutionByAlias(t, false, pairAlias, canonicalBase, wantAsset)
+		})
 	}
 }
 
