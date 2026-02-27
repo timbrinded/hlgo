@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/shopspring/decimal"
 )
 
 var binaryPath string
@@ -524,6 +526,37 @@ func TestE2E_ResolverSpotUnitAliases_Mainnet(t *testing.T) {
 	}
 }
 
+func testE2EMidPrice(t *testing.T, coin string) decimal.Decimal {
+	t.Helper()
+
+	stdout, stderr, exitCode := runHlgo(t, "info", "mids")
+	if exitCode != 0 {
+		t.Fatalf("info mids failed (exit %d): %s", exitCode, stderr)
+	}
+
+	var mids map[string]string
+	if err := json.Unmarshal([]byte(stdout), &mids); err != nil {
+		t.Fatalf("failed to parse mids: %v", err)
+	}
+
+	midStr, ok := mids[coin]
+	if !ok {
+		t.Fatalf("no mid found for %s", coin)
+	}
+
+	mid, err := decimal.NewFromString(midStr)
+	if err != nil {
+		t.Fatalf("invalid mid for %s: %v", coin, err)
+	}
+	return mid
+}
+
+func testE2ERestingBuyPrice(t *testing.T, coin string) string {
+	t.Helper()
+	// Keep the order far enough from market to rest, but inside exchange sanity bounds.
+	return testE2EMidPrice(t, coin).Mul(decimal.NewFromFloat(0.5)).Round(0).String()
+}
+
 // --- Order E2E tests (dry-run only by default) ---
 
 func TestE2E_OrderPlaceDryRun(t *testing.T) {
@@ -575,9 +608,11 @@ func TestE2E_OrderPlaceAndCancel(t *testing.T) {
 		t.Skip("skipping write test (set HL_E2E_WRITE=1 to enable)")
 	}
 
+	restingPrice := testE2ERestingBuyPrice(t, "BTC")
+
 	// 1. Place a far-from-market limit order (won't fill).
 	stdout, stderr, exitCode := runHlgo(t, "order", "place",
-		"--coin", "BTC", "--side", "buy", "--price", "10000", "--size", "0.001",
+		"--coin", "BTC", "--side", "buy", "--price", restingPrice, "--size", "0.001",
 	)
 	if exitCode != 0 {
 		t.Fatalf("place failed (exit %d): %s", exitCode, stderr)

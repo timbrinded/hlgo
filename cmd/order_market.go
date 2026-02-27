@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -125,7 +126,7 @@ The order is placed as an IOC (immediate-or-cancel) at the slippage-adjusted pri
 				return err
 			}
 
-			result, err := exec.PlaceOrder(cmd.Context(), exchange.PlaceOrderInput{
+			input := exchange.PlaceOrderInput{
 				Coin:         coin,
 				Side:         side,
 				Price:        price,
@@ -135,7 +136,14 @@ The order is placed as an IOC (immediate-or-cancel) at the slippage-adjusted pri
 				ExpiresAfter: expiresAfter,
 				VaultAddr:    vault,
 				DryRun:       cfg.DryRun,
-			})
+			}
+			result, err := exec.PlaceOrder(cmd.Context(), input)
+			if err != nil {
+				if nearest, ok := nearestValidPrice(err); ok {
+					input.Price = nearest
+					result, err = exec.PlaceOrder(cmd.Context(), input)
+				}
+			}
 			if err != nil {
 				return err
 			}
@@ -159,4 +167,27 @@ The order is placed as an IOC (immediate-or-cancel) at the slippage-adjusted pri
 	}
 
 	return cmd
+}
+
+func nearestValidPrice(err error) (decimal.Decimal, bool) {
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) || cliErr.Code != output.ErrValidation {
+		return decimal.Zero, false
+	}
+
+	raw, ok := cliErr.Details["nearest_valid"]
+	if !ok {
+		return decimal.Zero, false
+	}
+
+	nearest, ok := raw.(string)
+	if !ok || nearest == "" {
+		return decimal.Zero, false
+	}
+
+	px, parseErr := decimal.NewFromString(nearest)
+	if parseErr != nil {
+		return decimal.Zero, false
+	}
+	return px, true
 }
