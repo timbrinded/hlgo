@@ -112,6 +112,141 @@ func TestExecutor_PlaceOrder_SendsToExchange(t *testing.T) {
 	}
 }
 
+func TestExecutor_PlaceOrder_WithTpSlTriggers(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	c := client.NewClient("http://unused")
+	r := &mockResolver{
+		info: &resolver.AssetInfo{
+			AssetID:    0,
+			Coin:       "BTC",
+			SzDecimals: 3,
+			IsSpot:     false,
+		},
+	}
+
+	exec := NewExecutor(s, c, r, false)
+
+	tp := "55000"
+	sl := "45000"
+	result, err := exec.PlaceOrder(context.Background(), PlaceOrderInput{
+		Coin:      "BTC",
+		Side:      "buy",
+		Price:     decimal.NewFromInt(50000),
+		Size:      decimal.NewFromFloat(0.01),
+		Tif:       "Gtc",
+		TpTrigger: &tp,
+		SlTrigger: &sl,
+		DryRun:    true,
+	})
+	if err != nil {
+		t.Fatalf("PlaceOrder with triggers error: %v", err)
+	}
+
+	action := result.Action
+
+	// Expect 3 wires: main limit + TP trigger + SL trigger.
+	if len(action.Orders) != 3 {
+		t.Fatalf("expected 3 order wires, got %d", len(action.Orders))
+	}
+	if action.Grouping != "normalTpSl" {
+		t.Errorf("Grouping = %q, want normalTpSl", action.Grouping)
+	}
+
+	// Main order: buy limit.
+	main := action.Orders[0]
+	if main.B != true {
+		t.Error("main order should be buy")
+	}
+	if main.T.Limit == nil {
+		t.Fatal("main order should be Limit type")
+	}
+	if main.T.Limit.Tif != "Gtc" {
+		t.Errorf("main Tif = %q, want Gtc", main.T.Limit.Tif)
+	}
+
+	// TP trigger: sell (opposite), reduce-only, trigger type.
+	tpWire := action.Orders[1]
+	if tpWire.B != false {
+		t.Error("TP trigger should be sell (opposite of buy)")
+	}
+	if !tpWire.R {
+		t.Error("TP trigger should be reduce-only")
+	}
+	if tpWire.T.Trigger == nil {
+		t.Fatal("TP order should be Trigger type")
+	}
+	if tpWire.T.Trigger.TriggerPx != "55000" {
+		t.Errorf("TP TriggerPx = %q, want 55000", tpWire.T.Trigger.TriggerPx)
+	}
+	if tpWire.T.Trigger.Tpsl != "tp" {
+		t.Errorf("TP Tpsl = %q, want tp", tpWire.T.Trigger.Tpsl)
+	}
+
+	// SL trigger: sell (opposite), reduce-only, trigger type.
+	slWire := action.Orders[2]
+	if slWire.B != false {
+		t.Error("SL trigger should be sell (opposite of buy)")
+	}
+	if !slWire.R {
+		t.Error("SL trigger should be reduce-only")
+	}
+	if slWire.T.Trigger == nil {
+		t.Fatal("SL order should be Trigger type")
+	}
+	if slWire.T.Trigger.TriggerPx != "45000" {
+		t.Errorf("SL TriggerPx = %q, want 45000", slWire.T.Trigger.TriggerPx)
+	}
+	if slWire.T.Trigger.Tpsl != "sl" {
+		t.Errorf("SL Tpsl = %q, want sl", slWire.T.Trigger.Tpsl)
+	}
+}
+
+func TestExecutor_PlaceOrder_TpOnlyTrigger(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), &mockResolver{
+		info: &resolver.AssetInfo{AssetID: 3, Coin: "ETH", SzDecimals: 4},
+	}, false)
+
+	tp := "4000"
+	result, err := exec.PlaceOrder(context.Background(), PlaceOrderInput{
+		Coin:      "ETH",
+		Side:      "sell",
+		Price:     decimal.NewFromInt(3500),
+		Size:      decimal.NewFromFloat(1.0),
+		Tif:       "Gtc",
+		TpTrigger: &tp,
+		DryRun:    true,
+	})
+	if err != nil {
+		t.Fatalf("PlaceOrder with TP-only error: %v", err)
+	}
+
+	// 2 wires: main limit + TP trigger.
+	if len(result.Action.Orders) != 2 {
+		t.Fatalf("expected 2 order wires, got %d", len(result.Action.Orders))
+	}
+	if result.Action.Grouping != "normalTpSl" {
+		t.Errorf("Grouping = %q, want normalTpSl", result.Action.Grouping)
+	}
+
+	// TP trigger is buy (opposite of sell).
+	tpWire := result.Action.Orders[1]
+	if tpWire.B != true {
+		t.Error("TP trigger on sell order should be buy")
+	}
+	if tpWire.T.Trigger.Tpsl != "tp" {
+		t.Errorf("Tpsl = %q, want tp", tpWire.T.Trigger.Tpsl)
+	}
+}
+
 func TestExecutor_CancelOrders_DryRun(t *testing.T) {
 	s, err := signer.NewSigner(testPrivateKey)
 	if err != nil {

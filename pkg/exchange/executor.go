@@ -9,7 +9,6 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/timbrinded/hlgo/pkg/client"
-	"github.com/timbrinded/hlgo/pkg/output"
 	"github.com/timbrinded/hlgo/pkg/resolver"
 	"github.com/timbrinded/hlgo/pkg/signer"
 	"github.com/timbrinded/hlgo/pkg/wire"
@@ -89,23 +88,8 @@ func (e *Executor) PlaceOrder(ctx context.Context, input PlaceOrderInput) (*Plac
 
 	isBuy := input.Side == "buy"
 
-	// 4. Build triggers if present.
-	var triggers []*TriggerParams
-	if input.TpTrigger != nil {
-		triggers = append(triggers, &TriggerParams{
-			TriggerPx: *input.TpTrigger,
-			Tpsl:      "tp",
-		})
-	}
-	if input.SlTrigger != nil {
-		triggers = append(triggers, &TriggerParams{
-			TriggerPx: *input.SlTrigger,
-			Tpsl:      "sl",
-		})
-	}
-
-	// 5. Build order action.
-	params := []OrderParams{{
+	// 4. Build the main limit order (no trigger params — those are separate wires).
+	action := BuildOrderAction([]OrderParams{{
 		AssetID:    info.AssetID,
 		IsBuy:      isBuy,
 		Price:      priceStr,
@@ -113,30 +97,36 @@ func (e *Executor) PlaceOrder(ctx context.Context, input PlaceOrderInput) (*Plac
 		ReduceOnly: input.ReduceOnly,
 		Tif:        input.Tif,
 		Cloid:      input.Cloid,
-	}}
+	}}, nil)
 
-	// For triggers: the main order uses the Limit tif, triggers are separate wires.
-	// If no triggers, pass nil.
-	var trigParams []*TriggerParams
-	if len(triggers) == 0 {
-		trigParams = nil
-	} else {
-		trigParams = make([]*TriggerParams, len(params))
-		// Only attach triggers as additional orders, not to the main order.
-		trigParams[0] = nil
+	// 5. Append TP/SL trigger wires if present.
+	// Each trigger is a separate reduce-only order on the opposite side, using the same
+	// size as the main order. The trigger price goes in TriggerPx (IsMarket=true means
+	// the trigger fires a market order at that level), while Price/Size are wire-required
+	// fields that match the main order.
+	type triggerDef struct {
+		px   string
+		tpsl string
 	}
-	action := BuildOrderAction(params, trigParams)
-
-	// If triggers exist, add them as additional order wires.
+	var triggers []triggerDef
+	if input.TpTrigger != nil {
+		triggers = append(triggers, triggerDef{px: *input.TpTrigger, tpsl: "tp"})
+	}
+	if input.SlTrigger != nil {
+		triggers = append(triggers, triggerDef{px: *input.SlTrigger, tpsl: "sl"})
+	}
 	for _, trig := range triggers {
 		trigOrder := OrderParams{
 			AssetID:    info.AssetID,
-			IsBuy:      !isBuy, // triggers are on the opposite side
+			IsBuy:      !isBuy,
 			Price:      priceStr,
 			Size:       sizeStr,
 			ReduceOnly: true,
 		}
-		trigAction := BuildOrderAction([]OrderParams{trigOrder}, []*TriggerParams{trig})
+		trigAction := BuildOrderAction([]OrderParams{trigOrder}, []*TriggerParams{{
+			TriggerPx: trig.px,
+			Tpsl:      trig.tpsl,
+		}})
 		action.Orders = append(action.Orders, trigAction.Orders...)
 		action.Grouping = "normalTpSl"
 	}
@@ -229,8 +219,7 @@ func (e *Executor) CancelByCloid(ctx context.Context, cancels []CancelByCloidWir
 
 	sig, err := e.signer.SignL1Action(action, nonce, vault, e.mainnet)
 	if err != nil {
-		return nil, output.NewCLIError(output.ErrSigning, "failed to sign cancel-by-cloid action").
-			WithDetails("cause", err.Error())
+		return nil, err
 	}
 
 	return e.client.PostExchange(ctx, action, nonce, sig.Hex(), vaultAddr)

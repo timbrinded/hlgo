@@ -20,11 +20,11 @@ func newOrderMarketCmd() *cobra.Command {
 The order is placed as an IOC (immediate-or-cancel) at the slippage-adjusted price.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			coin, _ := cmd.Flags().GetString("coin")             //nolint:errcheck // known flag
-			side, _ := cmd.Flags().GetString("side")             //nolint:errcheck // known flag
-			sizeStr, _ := cmd.Flags().GetString("size")          //nolint:errcheck // known flag
-			slippagePct, _ := cmd.Flags().GetFloat64("slippage") //nolint:errcheck // known flag
-			vault, _ := cmd.Flags().GetString("vault")           //nolint:errcheck // known flag
+			coin, _ := cmd.Flags().GetString("coin")            //nolint:errcheck // known flag
+			side, _ := cmd.Flags().GetString("side")            //nolint:errcheck // known flag
+			sizeStr, _ := cmd.Flags().GetString("size")         //nolint:errcheck // known flag
+			slippageStr, _ := cmd.Flags().GetString("slippage") //nolint:errcheck // known flag
+			vault, _ := cmd.Flags().GetString("vault")          //nolint:errcheck // known flag
 
 			side = strings.ToLower(side)
 			if side != "buy" && side != "sell" {
@@ -64,7 +64,12 @@ The order is placed as an IOC (immediate-or-cancel) at the slippage-adjusted pri
 			}
 
 			// Apply slippage: buy → mid * (1 + slippage/100), sell → mid * (1 - slippage/100).
-			slippageDecimal := decimal.NewFromFloat(slippagePct).Div(decimal.NewFromInt(100))
+			slippageDecimal, err := decimal.NewFromString(slippageStr)
+			if err != nil {
+				return output.NewCLIError(output.ErrValidation, "invalid slippage").
+					WithDetails("value", slippageStr)
+			}
+			slippageDecimal = slippageDecimal.Div(decimal.NewFromInt(100))
 			var price decimal.Decimal
 			if side == "buy" {
 				price = mid.Mul(decimal.NewFromInt(1).Add(slippageDecimal))
@@ -97,7 +102,7 @@ The order is placed as an IOC (immediate-or-cancel) at the slippage-adjusted pri
 	cmd.Flags().String("coin", "", "coin name (e.g. BTC, ETH)")
 	cmd.Flags().String("side", "", "buy or sell")
 	cmd.Flags().String("size", "", "order size")
-	cmd.Flags().Float64("slippage", 0.5, "slippage percentage (default 0.5%)")
+	cmd.Flags().String("slippage", "0.5", "slippage percentage (default 0.5%)")
 	cmd.Flags().String("vault", "", "vault address")
 
 	for _, required := range []string{"coin", "side", "size"} {
