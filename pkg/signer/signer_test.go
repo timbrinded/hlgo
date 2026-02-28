@@ -177,7 +177,7 @@ func TestSignL1Action_DummyMainnet(t *testing.T) {
 
 	action := testDummyAction{Type: "dummy", Num: 100000000000}
 
-	sig, err := s.SignL1Action(action, 0, nil, true)
+	sig, err := s.SignL1Action(action, 0, nil, nil, true)
 	if err != nil {
 		t.Fatalf("signing L1 action: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestSignL1Action_DummyTestnet(t *testing.T) {
 
 	action := testDummyAction{Type: "dummy", Num: 100000000000}
 
-	sig, err := s.SignL1Action(action, 0, nil, false)
+	sig, err := s.SignL1Action(action, 0, nil, nil, false)
 	if err != nil {
 		t.Fatalf("signing L1 action: %v", err)
 	}
@@ -249,7 +249,7 @@ func TestSignL1Action_OrderMainnet(t *testing.T) {
 		Grouping: "na",
 	}
 
-	sig, err := s.SignL1Action(action, 0, nil, true)
+	sig, err := s.SignL1Action(action, 0, nil, nil, true)
 	if err != nil {
 		t.Fatalf("signing L1 action: %v", err)
 	}
@@ -292,7 +292,7 @@ func TestSignL1Action_OrderTestnet(t *testing.T) {
 		Grouping: "na",
 	}
 
-	sig, err := s.SignL1Action(action, 0, nil, false)
+	sig, err := s.SignL1Action(action, 0, nil, nil, false)
 	if err != nil {
 		t.Fatalf("signing L1 action: %v", err)
 	}
@@ -339,7 +339,7 @@ func TestSignL1Action_OrderWithTrigger(t *testing.T) {
 		Grouping: "na",
 	}
 
-	sig, err := s.SignL1Action(action, 0, nil, true)
+	sig, err := s.SignL1Action(action, 0, nil, nil, true)
 	if err != nil {
 		t.Fatalf("signing L1 action: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestSignL1Action_WithVault(t *testing.T) {
 	action := testDummyAction{Type: "dummy", Num: 100000000000}
 	vaultAddr := common.HexToAddress("0x1719884eb866cb12b2287399b15f7db5e7d775ea")
 
-	sig, err := s.SignL1Action(action, 0, &vaultAddr, true)
+	sig, err := s.SignL1Action(action, 0, &vaultAddr, nil, true)
 	if err != nil {
 		t.Fatalf("signing L1 action: %v", err)
 	}
@@ -379,6 +379,37 @@ func TestSignL1Action_WithVault(t *testing.T) {
 		"0x4d402be7396ce74fbba3795769cda45aec00dc3125a984f2a9f23177b190da2c",
 		28,
 	)
+}
+
+func TestSignL1Action_WithExpiresAfter(t *testing.T) {
+	s, err := NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	action := testDummyAction{Type: "dummy", Num: 100000000000}
+	expiresAfter := int64(1700000000000)
+
+	noExpirySig, err := s.SignL1Action(action, 0, nil, nil, true)
+	if err != nil {
+		t.Fatalf("signing without expiresAfter: %v", err)
+	}
+
+	withExpirySig1, err := s.SignL1Action(action, 0, nil, &expiresAfter, true)
+	if err != nil {
+		t.Fatalf("signing with expiresAfter: %v", err)
+	}
+	withExpirySig2, err := s.SignL1Action(action, 0, nil, &expiresAfter, true)
+	if err != nil {
+		t.Fatalf("signing with expiresAfter again: %v", err)
+	}
+
+	if noExpirySig.Hex() == withExpirySig1.Hex() {
+		t.Fatal("expected signature with expiresAfter to differ from signature without expiresAfter")
+	}
+	if withExpirySig1.Hex() != withExpirySig2.Hex() {
+		t.Fatal("expected deterministic signatures with same expiresAfter")
+	}
 }
 
 // TestSignUserAction_UsdTransfer verifies the user-signed USD transfer.

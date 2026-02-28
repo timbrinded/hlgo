@@ -90,7 +90,8 @@ Implement order place/market/cancel/cancel-all/modify/batch with agent wallet si
 ### Acceptance Criteria
 - `order place` maps all required wire fields correctly.
 - Rounding uses `pkg/wire` before sign/send.
-- `order market` computes IOC price from mids + slippage.
+- `order market` computes IOC price from mids + slippage and supports both spot and perp.
+- `order market --slippage` uses percent semantics (`1` = 1%).
 - `cancel` supports OID and CLOID.
 - Integration test: place → verify open → modify → cancel on testnet.
 
@@ -129,4 +130,3 @@ Set up GitHub Actions with fast unit test gates and protected integration lane.
 - Main-only workflow runs integration tests with testnet secret key.
 - `golangci-lint` (or equivalent static checks) integrated.
 - Build artifacts generated for Linux amd64 + Darwin arm64.
-

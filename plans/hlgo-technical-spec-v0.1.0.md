@@ -248,6 +248,12 @@ The CLI resolves asset IDs, tick size, and lot size from metadata, then rounds a
 #### `hlgo order market`
 IOC convenience wrapper with slippage-adjusted price.
 
+Behavior details:
+- Works for both perp and spot markets.
+- Accepts `--slippage` as a percent value (`1` = 1%, `0.5` = 0.5%).
+- Resolves canonical market symbols before mids lookup (spot aliases map to canonical pair symbols).
+- Computes aggressive IOC price from mids, then snaps to nearest wire-valid price before signing.
+
 #### `hlgo order cancel` / `cancel-all`
 Cancel by OID, CLOID, per coin, or globally.
 

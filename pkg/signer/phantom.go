@@ -23,8 +23,9 @@ var phantomAgentType = []apitypes.Type{
 //  1. Msgpack-encode the action
 //  2. Append 8-byte big-endian nonce
 //  3. Append vault flag: 0x00 (no vault) or 0x01 + 20-byte address
-//  4. Keccak256 the result
-func buildConnectionID(action any, nonce int64, vaultAddress *common.Address) (common.Hash, error) {
+//  4. If expiresAfter is set, append 0x00 + 8-byte big-endian timestamp
+//  5. Keccak256 the result
+func buildConnectionID(action any, nonce int64, vaultAddress *common.Address, expiresAfter *int64) (common.Hash, error) {
 	encoded, err := msgpack.Marshal(action)
 	if err != nil {
 		return common.Hash{}, output.NewCLIError(output.ErrSigning, "failed to msgpack-encode action").
@@ -35,8 +36,8 @@ func buildConnectionID(action any, nonce int64, vaultAddress *common.Address) (c
 	var nonceBuf [8]byte
 	binary.BigEndian.PutUint64(nonceBuf[:], uint64(nonce))
 
-	// Build the payload: msgpack bytes + nonce + vault flag.
-	payload := make([]byte, 0, len(encoded)+8+21)
+	// Build the payload: msgpack bytes + nonce + vault flag (+ optional expiresAfter).
+	payload := make([]byte, 0, len(encoded)+8+21+9)
 	payload = append(payload, encoded...)
 	payload = append(payload, nonceBuf[:]...)
 
@@ -45,6 +46,13 @@ func buildConnectionID(action any, nonce int64, vaultAddress *common.Address) (c
 		payload = append(payload, vaultAddress.Bytes()...)
 	} else {
 		payload = append(payload, 0x00)
+	}
+
+	if expiresAfter != nil {
+		var expiresAfterBuf [8]byte
+		binary.BigEndian.PutUint64(expiresAfterBuf[:], uint64(*expiresAfter))
+		payload = append(payload, 0x00)
+		payload = append(payload, expiresAfterBuf[:]...)
 	}
 
 	return common.BytesToHash(crypto.Keccak256(payload)), nil

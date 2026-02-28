@@ -63,6 +63,7 @@ func TestPostInfo_Success(t *testing.T) {
 }
 
 func TestPostExchange_Success(t *testing.T) {
+	expiresAfter := int64(1700000012345)
 	srv := newTestServer(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		var req map[string]json.RawMessage
@@ -75,10 +76,10 @@ func TestPostExchange_Success(t *testing.T) {
 			t.Errorf("nonce = %s, want 1700000000000", nonce)
 		}
 
-		var sig string
+		var sig SignatureWire
 		json.Unmarshal(req["signature"], &sig)
-		if sig != "0xdeadbeef" {
-			t.Errorf("signature = %q, want %q", sig, "0xdeadbeef")
+		if sig.R != "0xdead" || sig.S != "0xbeef" || sig.V != 27 {
+			t.Errorf("signature = %+v, want {R:0xdead S:0xbeef V:27}", sig)
 		}
 
 		// Vault address should be present.
@@ -88,6 +89,14 @@ func TestPostExchange_Success(t *testing.T) {
 			t.Errorf("vaultAddress = %q, want %q", vault, "0xvault")
 		}
 
+		var gotExpiresAfter json.Number
+		if err := json.Unmarshal(req["expiresAfter"], &gotExpiresAfter); err != nil {
+			t.Fatalf("failed to decode expiresAfter: %v", err)
+		}
+		if gotExpiresAfter.String() != "1700000012345" {
+			t.Errorf("expiresAfter = %s, want 1700000012345", gotExpiresAfter)
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"status":"ok","response":{"type":"order","data":{"statuses":[{"filled":{"totalSz":"1.5","avgPx":"95000"}}]}}}`)
 	})
@@ -95,7 +104,7 @@ func TestPostExchange_Success(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	action := map[string]any{"type": "order", "orders": []any{}}
-	result, err := c.PostExchange(context.Background(), action, 1700000000000, "0xdeadbeef", "0xvault")
+	result, err := c.PostExchange(context.Background(), action, 1700000000000, SignatureWire{R: "0xdead", S: "0xbeef", V: 27}, "0xvault", &expiresAfter)
 	if err != nil {
 		t.Fatalf("PostExchange returned error: %v", err)
 	}
@@ -114,6 +123,9 @@ func TestPostExchange_OmitsEmptyVaultAddress(t *testing.T) {
 		if _, exists := raw["vaultAddress"]; exists {
 			t.Error("vaultAddress should be omitted when empty")
 		}
+		if _, exists := raw["expiresAfter"]; exists {
+			t.Error("expiresAfter should be omitted when empty")
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"status":"ok"}`)
@@ -121,7 +133,7 @@ func TestPostExchange_OmitsEmptyVaultAddress(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
-	_, err := c.PostExchange(context.Background(), map[string]string{"type": "cancel"}, 1700000000000, "0xsig", "")
+	_, err := c.PostExchange(context.Background(), map[string]string{"type": "cancel"}, 1700000000000, SignatureWire{R: "0x1", S: "0x2", V: 27}, "", nil)
 	if err != nil {
 		t.Fatalf("PostExchange returned error: %v", err)
 	}

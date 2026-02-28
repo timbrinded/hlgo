@@ -17,7 +17,7 @@ import (
 type Signer interface {
 	// SignL1Action signs a trading action using the L1 phantom agent path.
 	// action is msgpack-encoded, combined with nonce and vault info, then hashed.
-	SignL1Action(action any, nonce int64, vaultAddress *common.Address, isMainnet bool) (*Signature, error)
+	SignL1Action(action any, nonce int64, vaultAddress *common.Address, expiresAfter *int64, isMainnet bool) (*Signature, error)
 
 	// SignUserAction signs an account operation using direct EIP-712 signing.
 	SignUserAction(typeName string, typeFields []apitypes.Type, message map[string]any, isMainnet bool) (*Signature, error)
@@ -80,11 +80,12 @@ func (s *LocalSigner) Address() common.Address {
 //  1. Msgpack-encode the action
 //  2. Append 8-byte big-endian nonce (millisecond timestamp)
 //  3. Append vault address flag: 0x00 (no vault) or 0x01 + 20-byte address
-//  4. Keccak256 hash the combined bytes → connectionId
+//  4. If expiresAfter is set, append 0x00 + 8-byte big-endian timestamp
+//  5. Keccak256 hash the combined bytes → connectionId
 //  5. Build phantom Agent struct: {source: "a"|"b", connectionId: <hash>}
 //  6. EIP-712 sign the Agent struct
-func (s *LocalSigner) SignL1Action(action any, nonce int64, vaultAddress *common.Address, isMainnet bool) (*Signature, error) {
-	connectionID, err := buildConnectionID(action, nonce, vaultAddress)
+func (s *LocalSigner) SignL1Action(action any, nonce int64, vaultAddress *common.Address, expiresAfter *int64, isMainnet bool) (*Signature, error) {
+	connectionID, err := buildConnectionID(action, nonce, vaultAddress, expiresAfter)
 	if err != nil {
 		return nil, err // already a structured CLIError from buildConnectionID
 	}
