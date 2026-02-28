@@ -66,6 +66,42 @@ func TestOrderPlace_InvalidTif(t *testing.T) {
 	}
 }
 
+func TestOrderMarket_InvalidSlippage(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("order", "market",
+		"--coin", "BTC", "--side", "buy", "--size", "0.01",
+		"--slippage", "abc", "--dry-run",
+	)
+	if err == nil {
+		t.Fatal("expected error for invalid slippage")
+	}
+}
+
+func TestOrderMarket_NegativeSlippage(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("order", "market",
+		"--coin", "BTC", "--side", "buy", "--size", "0.01",
+		"--slippage", "-0.1", "--dry-run",
+	)
+	if err == nil {
+		t.Fatal("expected error for negative slippage")
+	}
+}
+
+func TestOrderMarket_TooLargeSlippage(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("order", "market",
+		"--coin", "BTC", "--side", "sell", "--size", "0.01",
+		"--slippage", "100", "--dry-run",
+	)
+	if err == nil {
+		t.Fatal("expected error for slippage >= 100")
+	}
+}
+
 func TestOrderPlace_WithCloid(t *testing.T) {
 	stdout, _, run := newTestRootWithServer(t, "")
 

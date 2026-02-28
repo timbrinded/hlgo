@@ -43,11 +43,12 @@ type Resolver interface {
 // In this case SzDecimals and IsSpot are zero-value defaults — callers must supply
 // their own metadata for wire formatting and market-type decisions.
 type AssetInfo struct {
-	AssetID     int
-	Coin        string
-	SzDecimals  int
-	IsSpot      bool
-	Passthrough bool // true when resolved from a numeric ID string (metadata unknown)
+	AssetID       int
+	Coin          string
+	CanonicalCoin string
+	SzDecimals    int
+	IsSpot        bool
+	Passthrough   bool // true when resolved from a numeric ID string (metadata unknown)
 }
 
 type spotPairCandidate struct {
@@ -146,11 +147,12 @@ func (r *CachingResolver) ResolveAsset(ctx context.Context, coin string) (*Asset
 					WithDetails("hint", "use a non-negative numeric asset ID or a valid coin name (e.g. BTC, ETH)")
 			}
 			return &AssetInfo{
-				AssetID:     id,
-				Coin:        trimmed,
-				SzDecimals:  0,
-				IsSpot:      false,
-				Passthrough: true,
+				AssetID:       id,
+				Coin:          trimmed,
+				CanonicalCoin: trimmed,
+				SzDecimals:    0,
+				IsSpot:        false,
+				Passthrough:   true,
 			}, nil
 		}
 	}
@@ -285,10 +287,11 @@ func (r *CachingResolver) loadHIP3DexLocked(ctx context.Context, dex string) err
 	for i, asset := range pm.Universe {
 		upper := strings.ToUpper(asset.Name)
 		r.perpMap[upper] = &AssetInfo{
-			AssetID:    offset + i,
-			Coin:       asset.Name,
-			SzDecimals: asset.SzDecimals,
-			IsSpot:     false,
+			AssetID:       offset + i,
+			Coin:          asset.Name,
+			CanonicalCoin: asset.Name,
+			SzDecimals:    asset.SzDecimals,
+			IsSpot:        false,
 		}
 	}
 
@@ -391,10 +394,11 @@ func (r *CachingResolver) buildMaps(perpData, spotData []byte) error {
 	for i, asset := range pm.Universe {
 		upper := strings.ToUpper(asset.Name)
 		perpMap[upper] = &AssetInfo{
-			AssetID:    i, // perp asset ID = array index
-			Coin:       asset.Name,
-			SzDecimals: asset.SzDecimals,
-			IsSpot:     false,
+			AssetID:       i, // perp asset ID = array index
+			Coin:          asset.Name,
+			CanonicalCoin: asset.Name,
+			SzDecimals:    asset.SzDecimals,
+			IsSpot:        false,
 		}
 	}
 
@@ -419,10 +423,11 @@ func (r *CachingResolver) buildMaps(perpData, spotData []byte) error {
 				WithDetails("tokenIndex", strconv.Itoa(baseIdx))
 		}
 		info := &AssetInfo{
-			AssetID:    10000 + market.Index, // spot asset ID = 10000 + spot market index
-			Coin:       token.Name,
-			SzDecimals: token.SzDecimals,
-			IsSpot:     true,
+			AssetID:       10000 + market.Index, // spot asset ID = 10000 + spot market index
+			Coin:          token.Name,
+			CanonicalCoin: market.Name,
+			SzDecimals:    token.SzDecimals,
+			IsSpot:        true,
 		}
 		// Allow resolution by both base token ("PURR") and full market name ("PURR/USDC").
 		baseKey := strings.ToUpper(token.Name)

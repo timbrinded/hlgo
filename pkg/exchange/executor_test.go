@@ -3,6 +3,7 @@ package exchange
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -11,8 +12,10 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/timbrinded/hlgo/pkg/client"
+	"github.com/timbrinded/hlgo/pkg/output"
 	"github.com/timbrinded/hlgo/pkg/resolver"
 	"github.com/timbrinded/hlgo/pkg/signer"
+	"github.com/timbrinded/hlgo/pkg/wire"
 )
 
 // mockResolver returns fixed asset info for testing.
@@ -23,6 +26,28 @@ type mockResolver struct {
 
 func (m *mockResolver) ResolveAsset(_ context.Context, _ string) (*resolver.AssetInfo, error) {
 	return m.info, m.err
+}
+
+func newMidsServer(t *testing.T, mids string) *httptest.Server {
+	t.Helper()
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/info" {
+			http.NotFound(w, r)
+			return
+		}
+
+		var req map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if req["type"] != "allMids" {
+			t.Fatalf("type = %q, want allMids", req["type"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, mids)
+	}))
 }
 
 func TestExecutor_PlaceOrder_DryRun(t *testing.T) {
@@ -75,6 +100,197 @@ func TestExecutor_PlaceOrder_DryRun(t *testing.T) {
 	}
 	if result.Action.Builder.F != 10 {
 		t.Errorf("builder fee = %d, want 10", result.Action.Builder.F)
+	}
+}
+
+func TestExecutor_PlaceMarketOrder_DryRunPerp(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	srv := newMidsServer(t, `{"BTC":"50000"}`)
+	defer srv.Close()
+
+	exec := NewExecutor(s, client.NewClient(srv.URL), &mockResolver{
+		info: &resolver.AssetInfo{
+			AssetID:       0,
+			Coin:          "BTC",
+			CanonicalCoin: "BTC",
+			SzDecimals:    3,
+			IsSpot:        false,
+		},
+	}, false)
+
+	result, err := exec.PlaceMarketOrder(context.Background(), PlaceMarketOrderInput{
+		Coin:            "BTC",
+		Side:            "sell",
+		Size:            decimal.NewFromFloat(0.01),
+		SlippagePercent: decimal.NewFromFloat(0.5),
+		DryRun:          true,
+	})
+	if err != nil {
+		t.Fatalf("PlaceMarketOrder dry-run error: %v", err)
+	}
+
+	if result.Action == nil {
+		t.Fatal("expected action in dry-run result")
+	}
+	if len(result.Action.Orders) != 1 {
+		t.Fatalf("expected 1 order, got %d", len(result.Action.Orders))
+	}
+	if got := result.Action.Orders[0].T.Limit.Tif; got != "Ioc" {
+		t.Errorf("Tif = %q, want Ioc", got)
+	}
+	if got := result.Action.Orders[0].P; got != "49750" {
+		t.Errorf("price = %q, want 49750", got)
+	}
+}
+
+func TestExecutor_PlaceMarketOrder_DryRunSpotCanonicalLookup(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	// Intentionally expose only the canonical spot market key.
+	srv := newMidsServer(t, `{"PURR/USDC":"1.2"}`)
+	defer srv.Close()
+
+	exec := NewExecutor(s, client.NewClient(srv.URL), &mockResolver{
+		info: &resolver.AssetInfo{
+			AssetID:       10000,
+			Coin:          "PURR",
+			CanonicalCoin: "PURR/USDC",
+			SzDecimals:    2,
+			IsSpot:        true,
+		},
+	}, false)
+
+	result, err := exec.PlaceMarketOrder(context.Background(), PlaceMarketOrderInput{
+		Coin:            "PURR",
+		Side:            "buy",
+		Size:            decimal.NewFromInt(10),
+		SlippagePercent: decimal.NewFromFloat(0.5),
+		DryRun:          true,
+	})
+	if err != nil {
+		t.Fatalf("PlaceMarketOrder spot dry-run error: %v", err)
+	}
+
+	if got := result.Action.Orders[0].P; got != "1.206" {
+		t.Errorf("price = %q, want 1.206", got)
+	}
+}
+
+func TestExecutor_PlaceMarketOrder_SnapsPriceToWireRules(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	srv := newMidsServer(t, `{"BTC":"12345.6789"}`)
+	defer srv.Close()
+
+	exec := NewExecutor(s, client.NewClient(srv.URL), &mockResolver{
+		info: &resolver.AssetInfo{
+			AssetID:       0,
+			Coin:          "BTC",
+			CanonicalCoin: "BTC",
+			SzDecimals:    3,
+			IsSpot:        false,
+		},
+	}, false)
+
+	result, err := exec.PlaceMarketOrder(context.Background(), PlaceMarketOrderInput{
+		Coin:            "BTC",
+		Side:            "buy",
+		Size:            decimal.NewFromFloat(0.1),
+		SlippagePercent: decimal.Zero,
+		DryRun:          true,
+	})
+	if err != nil {
+		t.Fatalf("PlaceMarketOrder dry-run error: %v", err)
+	}
+
+	rawPx, err := decimal.NewFromString("12345.6789")
+	if err != nil {
+		t.Fatalf("parse raw price: %v", err)
+	}
+	want := wire.NearestValidPrice(rawPx, 3, false).String()
+	if got := result.Action.Orders[0].P; got != want {
+		t.Errorf("price = %q, want %q", got, want)
+	}
+}
+
+func TestExecutor_PlaceMarketOrder_MissingMid(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	srv := newMidsServer(t, `{"BTC":"50000"}`)
+	defer srv.Close()
+
+	exec := NewExecutor(s, client.NewClient(srv.URL), &mockResolver{
+		info: &resolver.AssetInfo{
+			AssetID:       1,
+			Coin:          "ETH",
+			CanonicalCoin: "ETH",
+			SzDecimals:    4,
+			IsSpot:        false,
+		},
+	}, false)
+
+	_, err = exec.PlaceMarketOrder(context.Background(), PlaceMarketOrderInput{
+		Coin:            "ETH",
+		Side:            "buy",
+		Size:            decimal.NewFromInt(1),
+		SlippagePercent: decimal.NewFromFloat(0.5),
+		DryRun:          true,
+	})
+	if err == nil {
+		t.Fatal("expected missing mid error")
+	}
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrValidation {
+		t.Errorf("code = %q, want %q", cliErr.Code, output.ErrValidation)
+	}
+}
+
+func TestExecutor_PlaceMarketOrder_RejectsInvalidSlippage(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), nil, false)
+
+	tests := []struct {
+		name     string
+		slippage decimal.Decimal
+	}{
+		{name: "negative", slippage: decimal.NewFromFloat(-0.1)},
+		{name: "too large", slippage: decimal.NewFromInt(100)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := exec.PlaceMarketOrder(context.Background(), PlaceMarketOrderInput{
+				Coin:            "BTC",
+				Side:            "buy",
+				Size:            decimal.NewFromInt(1),
+				SlippagePercent: tc.slippage,
+				DryRun:          true,
+			})
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
 	}
 }
 

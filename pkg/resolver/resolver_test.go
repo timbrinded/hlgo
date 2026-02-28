@@ -114,6 +114,9 @@ func TestResolveKnownPerpCoin(t *testing.T) {
 	if info.Coin != "ETH" {
 		t.Errorf("Coin = %q, want %q", info.Coin, "ETH")
 	}
+	if info.CanonicalCoin != "ETH" {
+		t.Errorf("CanonicalCoin = %q, want %q", info.CanonicalCoin, "ETH")
+	}
 	if info.SzDecimals != 4 {
 		t.Errorf("SzDecimals = %d, want 4", info.SzDecimals)
 	}
@@ -170,6 +173,9 @@ func TestResolveKnownSpotCoin(t *testing.T) {
 	}
 	if info.Coin != "PURR" {
 		t.Errorf("Coin = %q, want %q", info.Coin, "PURR")
+	}
+	if info.CanonicalCoin != "PURR/USDC" {
+		t.Errorf("CanonicalCoin = %q, want %q", info.CanonicalCoin, "PURR/USDC")
 	}
 	if info.SzDecimals != 0 {
 		t.Errorf("SzDecimals = %d, want 0", info.SzDecimals)
@@ -246,6 +252,9 @@ func TestNumericPassthrough(t *testing.T) {
 	}
 	if info.Coin != "1" {
 		t.Errorf("Coin = %q, want %q", info.Coin, "1")
+	}
+	if info.CanonicalCoin != "1" {
+		t.Errorf("CanonicalCoin = %q, want %q", info.CanonicalCoin, "1")
 	}
 	if info.SzDecimals != 0 {
 		t.Errorf("SzDecimals = %d, want 0", info.SzDecimals)

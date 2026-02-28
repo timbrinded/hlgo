@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"errors"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/timbrinded/hlgo/pkg/config"
 	"github.com/timbrinded/hlgo/pkg/exchange"
-	"github.com/timbrinded/hlgo/pkg/info"
 	"github.com/timbrinded/hlgo/pkg/output"
 )
 
@@ -82,43 +80,18 @@ The order is placed as an IOC (immediate-or-cancel) at the slippage-adjusted pri
 					WithDetails("value", sizeStr)
 			}
 
-			// Fetch mid price.
-			ic := buildInfoClient(cfg)
-			raw, err := ic.AllMids(cmd.Context(), cfg.Dex)
-			if err != nil {
-				return err
-			}
-
-			mids, err := info.ParseMidsResult(raw)
-			if err != nil {
-				return err
-			}
-
-			midStr, ok := mids[coin]
-			if !ok {
-				return output.NewCLIError(output.ErrValidation, "no mid price found for coin: "+coin).
-					WithDetails("coin", coin)
-			}
-
-			mid, err := decimal.NewFromString(midStr)
-			if err != nil {
-				return output.NewCLIError(output.ErrAPI, "invalid mid price from API").
-					WithDetails("coin", coin).
-					WithDetails("value", midStr)
-			}
-
-			// Apply slippage: buy → mid * (1 + slippage/100), sell → mid * (1 - slippage/100).
 			slippageDecimal, err := decimal.NewFromString(slippageStr)
 			if err != nil {
 				return output.NewCLIError(output.ErrValidation, "invalid slippage").
 					WithDetails("value", slippageStr)
 			}
-			slippageDecimal = slippageDecimal.Div(decimal.NewFromInt(100))
-			var price decimal.Decimal
-			if side == "buy" {
-				price = mid.Mul(decimal.NewFromInt(1).Add(slippageDecimal))
-			} else {
-				price = mid.Mul(decimal.NewFromInt(1).Sub(slippageDecimal))
+			if slippageDecimal.IsNegative() {
+				return output.NewCLIError(output.ErrValidation, "slippage must be non-negative").
+					WithDetails("value", slippageStr)
+			}
+			if slippageDecimal.GreaterThanOrEqual(decimal.NewFromInt(100)) {
+				return output.NewCLIError(output.ErrValidation, "slippage must be less than 100 percent").
+					WithDetails("value", slippageStr)
 			}
 
 			exec, err := buildExecutor(cfg)
@@ -126,24 +99,16 @@ The order is placed as an IOC (immediate-or-cancel) at the slippage-adjusted pri
 				return err
 			}
 
-			input := exchange.PlaceOrderInput{
-				Coin:         coin,
-				Side:         side,
-				Price:        price,
-				Size:         size,
-				Tif:          "Ioc",
-				Builder:      builder,
-				ExpiresAfter: expiresAfter,
-				VaultAddr:    vault,
-				DryRun:       cfg.DryRun,
-			}
-			result, err := exec.PlaceOrder(cmd.Context(), input)
-			if err != nil {
-				if nearest, ok := nearestValidPrice(err); ok {
-					input.Price = nearest
-					result, err = exec.PlaceOrder(cmd.Context(), input)
-				}
-			}
+			result, err := exec.PlaceMarketOrder(cmd.Context(), exchange.PlaceMarketOrderInput{
+				Coin:            coin,
+				Side:            side,
+				Size:            size,
+				SlippagePercent: slippageDecimal,
+				Builder:         builder,
+				ExpiresAfter:    expiresAfter,
+				VaultAddr:       vault,
+				DryRun:          cfg.DryRun,
+			})
 			if err != nil {
 				return err
 			}
@@ -167,27 +132,4 @@ The order is placed as an IOC (immediate-or-cancel) at the slippage-adjusted pri
 	}
 
 	return cmd
-}
-
-func nearestValidPrice(err error) (decimal.Decimal, bool) {
-	var cliErr *output.CLIError
-	if !errors.As(err, &cliErr) || cliErr.Code != output.ErrValidation {
-		return decimal.Zero, false
-	}
-
-	raw, ok := cliErr.Details["nearest_valid"]
-	if !ok {
-		return decimal.Zero, false
-	}
-
-	nearest, ok := raw.(string)
-	if !ok || nearest == "" {
-		return decimal.Zero, false
-	}
-
-	px, parseErr := decimal.NewFromString(nearest)
-	if parseErr != nil {
-		return decimal.Zero, false
-	}
-	return px, true
 }

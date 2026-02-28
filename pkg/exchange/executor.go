@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/shopspring/decimal"
 
 	"github.com/timbrinded/hlgo/pkg/client"
+	"github.com/timbrinded/hlgo/pkg/info"
+	"github.com/timbrinded/hlgo/pkg/output"
 	"github.com/timbrinded/hlgo/pkg/resolver"
 	"github.com/timbrinded/hlgo/pkg/signer"
 	"github.com/timbrinded/hlgo/pkg/wire"
@@ -60,6 +63,20 @@ type PlaceOrderInput struct {
 	DryRun       bool
 }
 
+// PlaceMarketOrderInput bundles parameters for placing a market order.
+// Market orders are implemented as aggressive IOC limit orders.
+type PlaceMarketOrderInput struct {
+	Coin            string
+	Side            string // "buy" or "sell"
+	Size            decimal.Decimal
+	SlippagePercent decimal.Decimal
+	Builder         *BuilderInfo
+	// ExpiresAfter, when set, causes the action to be rejected after this Unix ms timestamp.
+	ExpiresAfter *int64
+	VaultAddr    string
+	DryRun       bool
+}
+
 // PlaceOrderResult holds the result of a place order operation.
 type PlaceOrderResult struct {
 	Response json.RawMessage `json:"response,omitempty"`
@@ -77,6 +94,94 @@ type ResolvedOrder struct {
 	Tif        string `json:"tif"`
 	ReduceOnly bool   `json:"reduce_only"`
 	IsSpot     bool   `json:"is_spot"`
+}
+
+// PlaceMarketOrder executes an IOC convenience order at a slippage-adjusted price.
+func (e *Executor) PlaceMarketOrder(ctx context.Context, input PlaceMarketOrderInput) (*PlaceOrderResult, error) {
+	side := strings.ToLower(strings.TrimSpace(input.Side))
+	if side != "buy" && side != "sell" {
+		return nil, output.NewCLIError(output.ErrValidation, "side must be 'buy' or 'sell'").
+			WithDetails("value", input.Side)
+	}
+
+	if input.SlippagePercent.IsNegative() {
+		return nil, output.NewCLIError(output.ErrValidation, "slippage must be non-negative").
+			WithDetails("value", input.SlippagePercent.String())
+	}
+	if input.SlippagePercent.GreaterThanOrEqual(decimal.NewFromInt(100)) {
+		return nil, output.NewCLIError(output.ErrValidation, "slippage must be less than 100 percent").
+			WithDetails("value", input.SlippagePercent.String())
+	}
+
+	assetInfo, err := e.resolver.ResolveAsset(ctx, input.Coin)
+	if err != nil {
+		return nil, err
+	}
+
+	canonicalCoin := assetInfo.CanonicalCoin
+	if canonicalCoin == "" {
+		canonicalCoin = assetInfo.Coin
+	}
+	if canonicalCoin == "" {
+		canonicalCoin = input.Coin
+	}
+
+	midsReq := map[string]string{"type": "allMids"}
+	if dex := marketCoinDex(canonicalCoin); dex != "" {
+		midsReq["dex"] = dex
+	}
+
+	midsRaw, err := e.client.PostInfo(ctx, midsReq)
+	if err != nil {
+		return nil, err
+	}
+
+	mids, err := info.ParseMidsResult(midsRaw)
+	if err != nil {
+		return nil, output.NewCLIError(output.ErrAPI, "failed to parse mids response").
+			WithDetails("cause", err.Error())
+	}
+
+	midStr, ok := mids[canonicalCoin]
+	if !ok {
+		return nil, output.NewCLIError(output.ErrValidation, "no mid price found for coin: "+canonicalCoin).
+			WithDetails("coin", input.Coin).
+			WithDetails("canonical_coin", canonicalCoin)
+	}
+
+	mid, err := decimal.NewFromString(midStr)
+	if err != nil {
+		return nil, output.NewCLIError(output.ErrAPI, "invalid mid price from API").
+			WithDetails("coin", canonicalCoin).
+			WithDetails("value", midStr)
+	}
+
+	slippage := input.SlippagePercent.Div(decimal.NewFromInt(100))
+	price := mid.Mul(decimal.NewFromInt(1).Sub(slippage))
+	if side == "buy" {
+		price = mid.Mul(decimal.NewFromInt(1).Add(slippage))
+	}
+	price = wire.NearestValidPrice(price, assetInfo.SzDecimals, assetInfo.IsSpot)
+
+	return e.PlaceOrder(ctx, PlaceOrderInput{
+		Coin:         input.Coin,
+		Side:         side,
+		Price:        price,
+		Size:         input.Size,
+		Tif:          "Ioc",
+		Builder:      input.Builder,
+		ExpiresAfter: input.ExpiresAfter,
+		VaultAddr:    input.VaultAddr,
+		DryRun:       input.DryRun,
+	})
+}
+
+func marketCoinDex(coin string) string {
+	idx := strings.Index(coin, ":")
+	if idx <= 0 {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(coin[:idx]))
 }
 
 // PlaceOrder executes the full order placement pipeline.
