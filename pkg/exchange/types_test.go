@@ -147,3 +147,65 @@ func TestOrderAction_TriggerSigningVector(t *testing.T) {
 		27,
 	)
 }
+
+// TestUpdateLeverageAction_SigningVector verifies msgpack serialization stability
+// for the updateLeverage action type.
+func TestUpdateLeverageAction_SigningVector_Mainnet(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	action := UpdateLeverageAction{
+		Type:     "updateLeverage",
+		Asset:    1,
+		IsCross:  true,
+		Leverage: 10,
+	}
+
+	sig, err := s.SignL1Action(action, 0, nil, nil, true)
+	if err != nil {
+		t.Fatalf("signing: %v", err)
+	}
+
+	assertSignature(t, sig,
+		"0xe10d541e5d102e793bfa5b9d2ab7e178de6bb3920aa4b25cb31203f2cc3c48d8",
+		"0x770fe6d69d47c3f76e7fb5a066e37eb90847633666e7143bb1c69dc9986971fc",
+		28,
+	)
+}
+
+// TestModifyAction_SigningVector verifies msgpack serialization stability
+// for the modify action type, including the nested OrderWire.
+func TestModifyAction_SigningVector_Mainnet(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	action := ModifyAction{
+		Type: "modify",
+		Oid:  12345,
+		Order: OrderWire{
+			A: 1,
+			B: true,
+			P: "100",
+			S: "100",
+			R: false,
+			T: OrderTypeWire{
+				Limit: &LimitTif{Tif: "Gtc"},
+			},
+		},
+	}
+
+	sig, err := s.SignL1Action(action, 0, nil, nil, true)
+	if err != nil {
+		t.Fatalf("signing: %v", err)
+	}
+
+	assertSignature(t, sig,
+		"0xe40870f30994af9a012b41c42388f6a690fc90bfcae13bb95f306a3ce752c964",
+		"0x5553f0016fc21a3b3a59b05373202bc675aaddf84484d1b110dd2a7493fb8079",
+		28,
+	)
+}

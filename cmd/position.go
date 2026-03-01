@@ -3,7 +3,7 @@ package cmd
 import "github.com/spf13/cobra"
 
 func newPositionCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "position",
 		Short: "Manage positions: leverage and margin",
 		Long: `Set leverage mode (cross/isolated) and multiplier, and update isolated
@@ -13,4 +13,11 @@ via the L1 phantom agent path.`,
 			return cmd.Help()
 		},
 	}
+
+	cmd.AddCommand(
+		newPositionLeverageCmd(),
+		newPositionMarginCmd(),
+	)
+
+	return cmd
 }

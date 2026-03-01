@@ -19,6 +19,9 @@ wallet via the L1 phantom agent path.`,
 		newOrderMarketCmd(),
 		newOrderCancelCmd(),
 		newOrderCancelAllCmd(),
+		newOrderModifyCmd(),
+		newOrderBatchCmd(),
+		newOrderScheduleCancelCmd(),
 	)
 
 	return cmd

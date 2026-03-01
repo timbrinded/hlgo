@@ -136,3 +136,105 @@ func TestBuildCancelByCloidAction(t *testing.T) {
 		t.Errorf("Cancels = %+v", action.Cancels)
 	}
 }
+
+func TestBuildUpdateLeverageAction(t *testing.T) {
+	action := BuildUpdateLeverageAction(1, true, 10)
+
+	if action.Type != "updateLeverage" {
+		t.Errorf("Type = %q, want updateLeverage", action.Type)
+	}
+	if action.Asset != 1 {
+		t.Errorf("Asset = %d, want 1", action.Asset)
+	}
+	if !action.IsCross {
+		t.Error("IsCross = false, want true")
+	}
+	if action.Leverage != 10 {
+		t.Errorf("Leverage = %d, want 10", action.Leverage)
+	}
+}
+
+func TestBuildUpdateIsolatedMarginAction(t *testing.T) {
+	action := BuildUpdateIsolatedMarginAction(0, true, 100500000)
+
+	if action.Type != "updateIsolatedMargin" {
+		t.Errorf("Type = %q, want updateIsolatedMargin", action.Type)
+	}
+	if action.Asset != 0 {
+		t.Errorf("Asset = %d, want 0", action.Asset)
+	}
+	if !action.IsBuy {
+		t.Error("IsBuy = false, want true")
+	}
+	if action.Ntli != 100500000 {
+		t.Errorf("Ntli = %d, want 100500000", action.Ntli)
+	}
+}
+
+func TestBuildUpdateIsolatedMarginAction_NegativeNtli(t *testing.T) {
+	action := BuildUpdateIsolatedMarginAction(0, false, -50000000)
+
+	if action.Ntli != -50000000 {
+		t.Errorf("Ntli = %d, want -50000000", action.Ntli)
+	}
+}
+
+func TestBuildModifyAction(t *testing.T) {
+	order := OrderWire{
+		A: 0,
+		B: true,
+		P: "50000",
+		S: "0.01",
+		R: false,
+		T: OrderTypeWire{
+			Limit: &LimitTif{Tif: "Gtc"},
+		},
+	}
+
+	action := BuildModifyAction(12345, order)
+
+	if action.Type != "modify" {
+		t.Errorf("Type = %q, want modify", action.Type)
+	}
+	if action.Oid != 12345 {
+		t.Errorf("Oid = %d, want 12345", action.Oid)
+	}
+	if action.Order.A != 0 {
+		t.Errorf("Order.A = %d, want 0", action.Order.A)
+	}
+	if !action.Order.B {
+		t.Error("Order.B = false, want true")
+	}
+	if action.Order.P != "50000" {
+		t.Errorf("Order.P = %q, want 50000", action.Order.P)
+	}
+	if action.Order.S != "0.01" {
+		t.Errorf("Order.S = %q, want 0.01", action.Order.S)
+	}
+}
+
+func TestBuildScheduleCancelAction(t *testing.T) {
+	cancelTime := int64(1700000000000)
+	action := BuildScheduleCancelAction(&cancelTime)
+
+	if action.Type != "scheduleCancel" {
+		t.Errorf("Type = %q, want scheduleCancel", action.Type)
+	}
+	if action.Time == nil {
+		t.Fatal("Time = nil, want non-nil")
+	}
+	if *action.Time != 1700000000000 {
+		t.Errorf("Time = %d, want 1700000000000", *action.Time)
+	}
+}
+
+func TestBuildScheduleCancelAction_Clear(t *testing.T) {
+	action := BuildScheduleCancelAction(nil)
+
+	if action.Type != "scheduleCancel" {
+		t.Errorf("Type = %q, want scheduleCancel", action.Type)
+	}
+	if action.Time != nil {
+		t.Errorf("Time = %d, want nil", *action.Time)
+	}
+}

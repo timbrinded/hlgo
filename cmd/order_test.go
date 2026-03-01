@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -228,7 +229,7 @@ func TestOrderSubcommands_AllRegistered(t *testing.T) {
 		t.Fatal("order command not found")
 	}
 
-	want := []string{"place", "market", "cancel", "cancel-all"}
+	want := []string{"place", "market", "cancel", "cancel-all", "modify", "batch", "schedule-cancel"}
 	cmds := make(map[string]bool)
 	for _, sub := range orderCmd.Commands() {
 		cmds[sub.Name()] = true
@@ -237,5 +238,135 @@ func TestOrderSubcommands_AllRegistered(t *testing.T) {
 		if !cmds[name] {
 			t.Errorf("subcommand %q not registered on order", name)
 		}
+	}
+}
+
+func TestOrderModify_DryRun(t *testing.T) {
+	stdout, _, run := newTestRootWithServer(t, "")
+
+	err := run("order", "modify",
+		"--coin", "BTC", "--oid", "12345", "--side", "buy",
+		"--price", "50000", "--size", "0.01", "--dry-run",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse output: %v\nraw: %s", err, stdout.String())
+	}
+	if result["resolved"] == nil {
+		t.Error("expected 'resolved' in dry-run output")
+	}
+}
+
+func TestOrderModify_RequiredFlags(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("order", "modify", "--dry-run")
+	if err == nil {
+		t.Fatal("expected error for missing required flags")
+	}
+}
+
+func TestOrderScheduleCancel_DryRun(t *testing.T) {
+	stdout, _, run := newTestRootWithServer(t, "")
+
+	err := run("order", "schedule-cancel", "--timeout", "5m", "--dry-run")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse output: %v\nraw: %s", err, stdout.String())
+	}
+	if result["type"] != "scheduleCancel" {
+		t.Errorf("type = %v, want scheduleCancel", result["type"])
+	}
+	if result["time"] == nil {
+		t.Error("expected 'time' in schedule-cancel output")
+	}
+}
+
+func TestOrderScheduleCancel_Clear(t *testing.T) {
+	stdout, _, run := newTestRootWithServer(t, "")
+
+	err := run("order", "schedule-cancel", "--clear", "--dry-run")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse output: %v\nraw: %s", err, stdout.String())
+	}
+	if result["type"] != "scheduleCancel" {
+		t.Errorf("type = %v, want scheduleCancel", result["type"])
+	}
+	// When clearing, time should be absent (null/omitted).
+	if _, ok := result["time"]; ok {
+		t.Error("expected 'time' to be absent in clear output")
+	}
+}
+
+func TestOrderScheduleCancel_MutualExclusion(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("order", "schedule-cancel", "--timeout", "5m", "--clear", "--dry-run")
+	if err == nil {
+		t.Fatal("expected error for mutually exclusive flags")
+	}
+}
+
+func TestOrderScheduleCancel_NeitherFlag(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("order", "schedule-cancel", "--dry-run")
+	if err == nil {
+		t.Fatal("expected error when neither --timeout nor --clear provided")
+	}
+}
+
+func TestOrderBatch_RequiredFlags(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("order", "batch", "--dry-run")
+	if err == nil {
+		t.Fatal("expected error for missing --file flag")
+	}
+}
+
+func TestOrderBatch_DryRun(t *testing.T) {
+	// Create a temporary batch file.
+	dir := t.TempDir()
+	batchFile := dir + "/orders.json"
+	content := `[
+		{"coin": "BTC", "side": "buy", "price": "50000", "size": "0.01"},
+		{"coin": "ETH", "side": "sell", "price": "3000", "size": "0.1"}
+	]`
+	os.WriteFile(batchFile, []byte(content), 0600) //nolint:errcheck // test helper
+
+	stdout, _, run := newTestRootWithServer(t, "")
+
+	err := run("order", "batch", "--file", batchFile, "--dry-run")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse output: %v\nraw: %s", err, stdout.String())
+	}
+	if result["type"] != "order" {
+		t.Errorf("type = %v, want order", result["type"])
+	}
+	orders, ok := result["orders"].([]any)
+	if !ok {
+		t.Fatal("expected orders array")
+	}
+	if len(orders) != 2 {
+		t.Errorf("orders len = %d, want 2", len(orders))
 	}
 }

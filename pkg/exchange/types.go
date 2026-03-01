@@ -70,3 +70,32 @@ type CancelByCloidAction struct {
 	Type    string              `msgpack:"type" json:"type"`
 	Cancels []CancelByCloidWire `msgpack:"cancels" json:"cancels"`
 }
+
+// UpdateLeverageAction is the wire-format action for setting leverage and margin mode.
+type UpdateLeverageAction struct {
+	Type     string `msgpack:"type" json:"type"`
+	Asset    int    `msgpack:"asset" json:"asset"`
+	IsCross  bool   `msgpack:"isCross" json:"isCross"`
+	Leverage int    `msgpack:"leverage" json:"leverage"`
+}
+
+// UpdateIsolatedMarginAction is the wire-format action for adjusting isolated margin.
+type UpdateIsolatedMarginAction struct {
+	Type  string `msgpack:"type" json:"type"`
+	Asset int    `msgpack:"asset" json:"asset"`
+	IsBuy bool   `msgpack:"isBuy" json:"isBuy"`
+	Ntli  int64  `msgpack:"ntli" json:"ntli"`
+}
+
+// ModifyAction is the wire-format action for modifying a single order.
+type ModifyAction struct {
+	Type  string    `msgpack:"type" json:"type"`
+	Oid   uint64    `msgpack:"oid" json:"oid"`
+	Order OrderWire `msgpack:"order" json:"order"`
+}
+
+// ScheduleCancelAction is the wire-format action for the dead man's switch.
+type ScheduleCancelAction struct {
+	Type string `msgpack:"type" json:"type"`
+	Time *int64 `msgpack:"time,omitempty" json:"time,omitempty"`
+}
