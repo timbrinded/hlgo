@@ -21,10 +21,10 @@ type agentStepError struct {
 
 type agentSnapshotResult struct {
 	AccountValue  string                `json:"account_value,omitempty"`
-	PerpPositions []info.AssetPosition  `json:"perp_positions,omitempty"`
+	PerpPositions []info.AssetPosition  `json:"perp_positions"`
 	SpotBalances  any                   `json:"spot_balances,omitempty"`
-	OpenOrders    info.OpenOrdersResult `json:"open_orders,omitempty"`
-	RecentFills   info.FillsResult      `json:"recent_fills,omitempty"`
+	OpenOrders    info.OpenOrdersResult `json:"open_orders"`
+	RecentFills   info.FillsResult      `json:"recent_fills"`
 	MidPrices     info.MidsResult       `json:"mid_prices,omitempty"`
 	Timestamp     string                `json:"timestamp"`
 	Partial       bool                  `json:"partial"`
@@ -106,7 +106,10 @@ func newAgentSnapshotCmd() *cobra.Command {
 
 			ic := buildInfoClient(cfg)
 			result := &agentSnapshotResult{
-				Timestamp: time.Now().UTC().Format(time.RFC3339),
+				PerpPositions: make([]info.AssetPosition, 0),
+				OpenOrders:    make(info.OpenOrdersResult, 0),
+				RecentFills:   make(info.FillsResult, 0),
+				Timestamp:     time.Now().UTC().Format(time.RFC3339),
 			}
 			successCount := 0
 

@@ -147,13 +147,16 @@ func newAgentPnlCmd() *cobra.Command {
 				return err
 			}
 
-			midsRaw, err := ic.AllMids(cmd.Context(), cfg.Dex)
-			if err != nil {
-				return err
-			}
-			mids, err := info.ParseMidsResult(midsRaw)
-			if err != nil {
-				return err
+			mids := make(info.MidsResult)
+			if len(state.AssetPositions) > 0 {
+				midsRaw, err := ic.AllMids(cmd.Context(), cfg.Dex)
+				if err != nil {
+					return err
+				}
+				mids, err = info.ParseMidsResult(midsRaw)
+				if err != nil {
+					return err
+				}
 			}
 
 			result := &agentPnlResult{
