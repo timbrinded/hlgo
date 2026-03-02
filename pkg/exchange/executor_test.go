@@ -92,14 +92,15 @@ func TestExecutor_PlaceOrder_DryRun(t *testing.T) {
 	if result.Resolved.Coin != "BTC" {
 		t.Errorf("Resolved.Coin = %q, want BTC", result.Resolved.Coin)
 	}
-	if result.Action.Orders[0].P != "50000" {
-		t.Errorf("price = %q, want 50000", result.Action.Orders[0].P)
+	action := result.Action
+	if action.Orders[0].P != "50000" {
+		t.Errorf("price = %q, want 50000", action.Orders[0].P)
 	}
-	if result.Action.Builder == nil {
+	if action.Builder == nil {
 		t.Fatal("expected builder in action")
 	}
-	if result.Action.Builder.F != 10 {
-		t.Errorf("builder fee = %d, want 10", result.Action.Builder.F)
+	if action.Builder.F != 10 {
+		t.Errorf("builder fee = %d, want 10", action.Builder.F)
 	}
 }
 
@@ -136,13 +137,14 @@ func TestExecutor_PlaceMarketOrder_DryRunPerp(t *testing.T) {
 	if result.Action == nil {
 		t.Fatal("expected action in dry-run result")
 	}
-	if len(result.Action.Orders) != 1 {
-		t.Fatalf("expected 1 order, got %d", len(result.Action.Orders))
+	action := result.Action
+	if len(action.Orders) != 1 {
+		t.Fatalf("expected 1 order, got %d", len(action.Orders))
 	}
-	if got := result.Action.Orders[0].T.Limit.Tif; got != "Ioc" {
+	if got := action.Orders[0].T.Limit.Tif; got != "Ioc" {
 		t.Errorf("Tif = %q, want Ioc", got)
 	}
-	if got := result.Action.Orders[0].P; got != "49750" {
+	if got := action.Orders[0].P; got != "49750" {
 		t.Errorf("price = %q, want 49750", got)
 	}
 }
@@ -456,15 +458,16 @@ func TestExecutor_PlaceOrder_TpOnlyTrigger(t *testing.T) {
 	}
 
 	// 2 wires: main limit + TP trigger.
-	if len(result.Action.Orders) != 2 {
-		t.Fatalf("expected 2 order wires, got %d", len(result.Action.Orders))
+	action := result.Action
+	if len(action.Orders) != 2 {
+		t.Fatalf("expected 2 order wires, got %d", len(action.Orders))
 	}
-	if result.Action.Grouping != "normalTpsl" {
-		t.Errorf("Grouping = %q, want normalTpSl", result.Action.Grouping)
+	if action.Grouping != "normalTpsl" {
+		t.Errorf("Grouping = %q, want normalTpSl", action.Grouping)
 	}
 
 	// TP trigger is buy (opposite of sell).
-	tpWire := result.Action.Orders[1]
+	tpWire := action.Orders[1]
 	if tpWire.B != true {
 		t.Error("TP trigger on sell order should be buy")
 	}
@@ -521,5 +524,266 @@ func TestExecutor_CancelByCloid_DryRun(t *testing.T) {
 	}
 	if action.Cancels[0].Cloid != "my-id" {
 		t.Errorf("Cloid = %q, want my-id", action.Cancels[0].Cloid)
+	}
+}
+
+func TestExecutor_UpdateLeverage_DryRun(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), &mockResolver{
+		info: &resolver.AssetInfo{
+			AssetID:    1,
+			Coin:       "ETH",
+			SzDecimals: 4,
+		},
+	}, false)
+
+	result, err := exec.UpdateLeverage(context.Background(), UpdateLeverageInput{
+		Coin:     "ETH",
+		IsCross:  true,
+		Leverage: 10,
+		DryRun:   true,
+	})
+	if err != nil {
+		t.Fatalf("UpdateLeverage dry-run error: %v", err)
+	}
+
+	var action UpdateLeverageAction
+	if err := json.Unmarshal(result, &action); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if action.Type != "updateLeverage" {
+		t.Errorf("Type = %q, want updateLeverage", action.Type)
+	}
+	if action.Asset != 1 {
+		t.Errorf("Asset = %d, want 1", action.Asset)
+	}
+	if !action.IsCross {
+		t.Error("IsCross = false, want true")
+	}
+	if action.Leverage != 10 {
+		t.Errorf("Leverage = %d, want 10", action.Leverage)
+	}
+}
+
+func TestExecutor_UpdateLeverage_InvalidLeverage(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), &mockResolver{
+		info: &resolver.AssetInfo{AssetID: 0, Coin: "BTC", SzDecimals: 3},
+	}, false)
+
+	_, err = exec.UpdateLeverage(context.Background(), UpdateLeverageInput{
+		Coin:     "BTC",
+		Leverage: 0,
+		DryRun:   true,
+	})
+	if err == nil {
+		t.Fatal("expected validation error for leverage < 1")
+	}
+}
+
+func TestExecutor_UpdateIsolatedMargin_DryRun(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), &mockResolver{
+		info: &resolver.AssetInfo{
+			AssetID:    0,
+			Coin:       "BTC",
+			SzDecimals: 3,
+		},
+	}, false)
+
+	result, err := exec.UpdateIsolatedMargin(context.Background(), UpdateIsolatedMarginInput{
+		Coin:   "BTC",
+		IsBuy:  true,
+		Amount: decimal.NewFromFloat(100.5),
+		DryRun: true,
+	})
+	if err != nil {
+		t.Fatalf("UpdateIsolatedMargin dry-run error: %v", err)
+	}
+
+	var action UpdateIsolatedMarginAction
+	if err := json.Unmarshal(result, &action); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if action.Ntli != 100500000 {
+		t.Errorf("Ntli = %d, want 100500000", action.Ntli)
+	}
+}
+
+func TestExecutor_UpdateIsolatedMargin_NegativeAmount(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), &mockResolver{
+		info: &resolver.AssetInfo{
+			AssetID:    0,
+			Coin:       "BTC",
+			SzDecimals: 3,
+		},
+	}, false)
+
+	result, err := exec.UpdateIsolatedMargin(context.Background(), UpdateIsolatedMarginInput{
+		Coin:   "BTC",
+		IsBuy:  false,
+		Amount: decimal.NewFromFloat(-50.0),
+		DryRun: true,
+	})
+	if err != nil {
+		t.Fatalf("UpdateIsolatedMargin negative amount error: %v", err)
+	}
+
+	var action UpdateIsolatedMarginAction
+	if err := json.Unmarshal(result, &action); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if action.Ntli != -50000000 {
+		t.Errorf("Ntli = %d, want -50000000", action.Ntli)
+	}
+}
+
+func TestExecutor_UpdateIsolatedMargin_AmountOverflow(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), &mockResolver{
+		info: &resolver.AssetInfo{
+			AssetID:    0,
+			Coin:       "BTC",
+			SzDecimals: 3,
+		},
+	}, false)
+
+	amount, err := decimal.NewFromString("9223372036854.775808")
+	if err != nil {
+		t.Fatalf("parse amount: %v", err)
+	}
+
+	_, err = exec.UpdateIsolatedMargin(context.Background(), UpdateIsolatedMarginInput{
+		Coin:   "BTC",
+		IsBuy:  true,
+		Amount: amount,
+		DryRun: true,
+	})
+	if err == nil {
+		t.Fatal("expected validation error for out-of-range ntli")
+	}
+}
+
+func TestExecutor_ModifyOrder_DryRun(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), &mockResolver{
+		info: &resolver.AssetInfo{
+			AssetID:    0,
+			Coin:       "BTC",
+			SzDecimals: 3,
+			IsSpot:     false,
+		},
+	}, false)
+
+	result, err := exec.ModifyOrder(context.Background(), ModifyOrderInput{
+		Coin:   "BTC",
+		Oid:    12345,
+		Side:   "buy",
+		Price:  decimal.NewFromInt(50000),
+		Size:   decimal.NewFromFloat(0.01),
+		Tif:    "Gtc",
+		DryRun: true,
+	})
+	if err != nil {
+		t.Fatalf("ModifyOrder dry-run error: %v", err)
+	}
+
+	if result.Action == nil {
+		t.Fatal("expected action in dry-run result")
+	}
+	if result.Response != nil {
+		t.Error("expected nil response in dry-run")
+	}
+	modAction := result.Action
+	if modAction.Oid != 12345 {
+		t.Errorf("Oid = %d, want 12345", modAction.Oid)
+	}
+	if result.Resolved == nil {
+		t.Fatal("expected resolved in dry-run result")
+	}
+	if result.Resolved.Coin != "BTC" {
+		t.Errorf("Resolved.Coin = %q, want BTC", result.Resolved.Coin)
+	}
+	if result.Resolved.Price != "50000" {
+		t.Errorf("Resolved.Price = %q, want 50000", result.Resolved.Price)
+	}
+}
+
+func TestExecutor_ScheduleCancel_DryRun(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), nil, false)
+
+	cancelTime := int64(1700000000000)
+	result, err := exec.ScheduleCancel(context.Background(), ScheduleCancelInput{
+		Time:   &cancelTime,
+		DryRun: true,
+	})
+	if err != nil {
+		t.Fatalf("ScheduleCancel dry-run error: %v", err)
+	}
+
+	var action ScheduleCancelAction
+	if err := json.Unmarshal(result, &action); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if action.Type != "scheduleCancel" {
+		t.Errorf("Type = %q, want scheduleCancel", action.Type)
+	}
+	if action.Time == nil || *action.Time != 1700000000000 {
+		t.Errorf("Time = %v, want 1700000000000", action.Time)
+	}
+}
+
+func TestExecutor_ScheduleCancel_Clear_DryRun(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), nil, false)
+
+	result, err := exec.ScheduleCancel(context.Background(), ScheduleCancelInput{
+		Time:   nil,
+		DryRun: true,
+	})
+	if err != nil {
+		t.Fatalf("ScheduleCancel clear dry-run error: %v", err)
+	}
+
+	var action ScheduleCancelAction
+	if err := json.Unmarshal(result, &action); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if action.Time != nil {
+		t.Errorf("Time = %v, want nil", action.Time)
 	}
 }

@@ -79,3 +79,40 @@ func BuildCancelByCloidAction(cancels []CancelByCloidWire) *CancelByCloidAction 
 		Cancels: cancels,
 	}
 }
+
+// BuildUpdateLeverageAction constructs an UpdateLeverageAction.
+func BuildUpdateLeverageAction(assetID int, isCross bool, leverage int) *UpdateLeverageAction {
+	return &UpdateLeverageAction{
+		Type:     "updateLeverage",
+		Asset:    assetID,
+		IsCross:  isCross,
+		Leverage: leverage,
+	}
+}
+
+// BuildUpdateIsolatedMarginAction constructs an UpdateIsolatedMarginAction.
+func BuildUpdateIsolatedMarginAction(assetID int, isBuy bool, ntli int64) *UpdateIsolatedMarginAction {
+	return &UpdateIsolatedMarginAction{
+		Type:  "updateIsolatedMargin",
+		Asset: assetID,
+		IsBuy: isBuy,
+		Ntli:  ntli,
+	}
+}
+
+// BuildModifyAction constructs a ModifyAction for a single order modification.
+func BuildModifyAction(oid uint64, order OrderWire) *ModifyAction {
+	return &ModifyAction{
+		Type:  "modify",
+		Oid:   oid,
+		Order: order,
+	}
+}
+
+// BuildScheduleCancelAction constructs a ScheduleCancelAction (dead man's switch).
+func BuildScheduleCancelAction(cancelTime *int64) *ScheduleCancelAction {
+	return &ScheduleCancelAction{
+		Type: "scheduleCancel",
+		Time: cancelTime,
+	}
+}
