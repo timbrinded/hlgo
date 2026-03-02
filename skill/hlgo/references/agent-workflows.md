@@ -5,7 +5,7 @@ Load this when building bracket orders, snapshot-to-trade flows, or PnL monitori
 
 ## Bracket Order Workflow
 
-Full 8-step flow: read state, compute prices, set leverage, place bracket, verify, monitor, clean up.
+Full 9-step flow: read state, compute prices, set leverage, dry-run, place bracket, verify, monitor, clean up.
 
 ```bash
 set -euo pipefail
@@ -24,14 +24,23 @@ hlgo position leverage --coin ETH --leverage 5 --testnet --format json
 # 4. Compute bracket prices from mid
 #    Entry: resting below market (buy) to avoid immediate fill
 #    TP: 5% above entry, SL: 5% below entry
-entry=$(echo "$eth_mid * 0.8" | bc -l | xargs printf "%.2f")
-tp=$(echo "$entry * 1.05" | bc -l | xargs printf "%.2f")
-sl=$(echo "$entry * 0.95" | bc -l | xargs printf "%.2f")
+#    Use 1 decimal at ETH ~2k levels to stay within max-5-significant-figure wire limits.
+entry=$(awk -v m="$eth_mid" 'BEGIN{printf "%.1f", m*0.80}')
+tp=$(awk -v e="$entry" 'BEGIN{printf "%.1f", e*1.05}')
+sl=$(awk -v e="$entry" 'BEGIN{printf "%.1f", e*0.95}')
 
 # 5. Generate unique CLOID for tracking
 cloid="0x$(openssl rand -hex 16)"
 
-# 6. Place bracket (entry + TP + SL in one grouped action)
+# 6. Dry-run first to catch precision/signing issues before live submission
+hlgo agent bracket \
+  --coin ETH --side buy \
+  --price "$entry" --size 0.01 \
+  --tp "$tp" --sl "$sl" \
+  --cloid "$cloid" \
+  --dry-run --testnet --format json
+
+# 7. Place bracket (entry + TP + SL in one grouped action)
 hlgo agent bracket \
   --coin ETH --side buy \
   --price "$entry" --size 0.01 \
@@ -39,11 +48,11 @@ hlgo agent bracket \
   --cloid "$cloid" \
   --testnet --format json
 
-# 7. Verify bracket appears in open orders
+# 8. Verify bracket appears in open orders
 orders=$(hlgo info open-orders --testnet --format json)
 echo "$orders" | jq --arg c "$cloid" '.[] | select(.cloid == $c)'
 
-# 8. Monitor with snapshot + PnL
+# 9. Monitor with snapshot + PnL
 hlgo agent snapshot --testnet --format json
 hlgo agent pnl --testnet --format json
 
@@ -57,6 +66,7 @@ hlgo order cancel-all --testnet --format json
 - **Take-profit:** `entry * 1.05` (5% above entry for buys).
 - **Stop-loss:** `entry * 0.95` (5% below entry for buys).
 - For sell brackets, invert: entry above market, TP below entry, SL above entry.
+- `%.2f` is not always safe on ETH-scale prices; default to one decimal or validate via `--dry-run`.
 - Round computed prices to wire-valid precision. See `precision-rules.md` for sig-fig and decimal constraints.
 
 ## PnL Monitoring Workflow
