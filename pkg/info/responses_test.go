@@ -195,6 +195,26 @@ func TestParseFillsResult(t *testing.T) {
 	}
 }
 
+func TestParseUserFundingResult(t *testing.T) {
+	raw := json.RawMessage(`[{"time":1700000000000,"hash":"0xabc","delta":{"type":"funding","coin":"BTC","usdc":"-0.25","fundingRate":"0.0001"}}]`)
+	funding, err := ParseUserFundingResult(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(funding) != 1 {
+		t.Fatalf("len = %d, want 1", len(funding))
+	}
+	if funding[0].Delta.Type != "funding" {
+		t.Errorf("Delta.Type = %q, want funding", funding[0].Delta.Type)
+	}
+	if funding[0].Delta.Coin != "BTC" {
+		t.Errorf("Delta.Coin = %q, want BTC", funding[0].Delta.Coin)
+	}
+	if funding[0].Delta.USDC != "-0.25" {
+		t.Errorf("Delta.USDC = %q, want -0.25", funding[0].Delta.USDC)
+	}
+}
+
 func TestParseFundingResult_APR(t *testing.T) {
 	raw := json.RawMessage(`[{"coin":"BTC","fundingRate":"0.0001","premium":"0","time":1700000000000}]`)
 	f, err := ParseFundingResult(raw)

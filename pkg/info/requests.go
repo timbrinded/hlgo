@@ -76,6 +76,14 @@ type UserFillsRequest struct {
 	AggregateByTime *bool  `json:"aggregateByTime,omitempty"`
 }
 
+// UserFundingRequest fetches user funding history.
+type UserFundingRequest struct {
+	Type      string `json:"type"`
+	User      string `json:"user"`
+	StartTime int64  `json:"startTime,omitempty"`
+	EndTime   int64  `json:"endTime,omitempty"`
+}
+
 // OrderStatusRequest fetches the status of a specific order.
 // Oid can be int64 (numeric OID) or string (CLOID).
 type OrderStatusRequest struct {

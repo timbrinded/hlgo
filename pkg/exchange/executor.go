@@ -361,10 +361,28 @@ func (e *Executor) PlaceOrder(ctx context.Context, input PlaceOrderInput) (*Plac
 	}
 	var triggers []triggerDef
 	if input.TpTrigger != nil {
-		triggers = append(triggers, triggerDef{px: *input.TpTrigger, tpsl: "tp"})
+		tpPrice, err := decimal.NewFromString(*input.TpTrigger)
+		if err != nil {
+			return nil, output.NewCLIError(output.ErrValidation, "invalid take-profit trigger price").
+				WithDetails("value", *input.TpTrigger)
+		}
+		tpWire, err := wire.PriceToWire(tpPrice, info.SzDecimals, info.IsSpot)
+		if err != nil {
+			return nil, err
+		}
+		triggers = append(triggers, triggerDef{px: tpWire, tpsl: "tp"})
 	}
 	if input.SlTrigger != nil {
-		triggers = append(triggers, triggerDef{px: *input.SlTrigger, tpsl: "sl"})
+		slPrice, err := decimal.NewFromString(*input.SlTrigger)
+		if err != nil {
+			return nil, output.NewCLIError(output.ErrValidation, "invalid stop-loss trigger price").
+				WithDetails("value", *input.SlTrigger)
+		}
+		slWire, err := wire.PriceToWire(slPrice, info.SzDecimals, info.IsSpot)
+		if err != nil {
+			return nil, err
+		}
+		triggers = append(triggers, triggerDef{px: slWire, tpsl: "sl"})
 	}
 	for _, trig := range triggers {
 		trigOrder := OrderParams{

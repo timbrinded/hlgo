@@ -116,6 +116,16 @@ func (ic *InfoClient) UserFillsByTime(ctx context.Context, user string, startTim
 	})
 }
 
+// UserFunding fetches funding payments for a user within a time range.
+func (ic *InfoClient) UserFunding(ctx context.Context, user string, startTime, endTime int64) (json.RawMessage, error) {
+	return ic.c.PostInfo(ctx, UserFundingRequest{
+		Type:      "userFunding",
+		User:      user,
+		StartTime: startTime,
+		EndTime:   endTime,
+	})
+}
+
 // OrderStatus fetches the status of a specific order.
 func (ic *InfoClient) OrderStatus(ctx context.Context, user string, oid any) (json.RawMessage, error) {
 	return ic.c.PostInfo(ctx, OrderStatusRequest{
