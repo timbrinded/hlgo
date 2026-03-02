@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -209,6 +210,100 @@ func TestExecutor_PlaceOrder_RejectsInvalidTriggerPrice(t *testing.T) {
 	}
 	if cliErr.Code != output.ErrValidation {
 		t.Errorf("code = %q, want %q", cliErr.Code, output.ErrValidation)
+	}
+}
+
+func TestExecutor_PlaceOrder_WrapsTpWireValidationError(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), &mockResolver{
+		info: &resolver.AssetInfo{
+			AssetID:    0,
+			Coin:       "BTC",
+			SzDecimals: 3,
+			IsSpot:     false,
+		},
+	}, false)
+
+	invalidTp := "50500.12" // exceeds 5 significant figures for wire price rules.
+	_, err = exec.PlaceOrder(context.Background(), PlaceOrderInput{
+		Coin:      "BTC",
+		Side:      "buy",
+		Price:     decimal.NewFromInt(50000),
+		Size:      decimal.RequireFromString("0.01"),
+		Tif:       "Gtc",
+		TpTrigger: &invalidTp,
+		DryRun:    true,
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrValidation {
+		t.Errorf("code = %q, want %q", cliErr.Code, output.ErrValidation)
+	}
+	if got := cliErr.Details["flag"]; got != "--tp" {
+		t.Errorf("details.flag = %v, want --tp", got)
+	}
+	if !strings.Contains(cliErr.Message, "--tp trigger price:") {
+		t.Errorf("message = %q, want --tp trigger context", cliErr.Message)
+	}
+	if _, ok := cliErr.Details["max_sig_figs"]; !ok {
+		t.Errorf("expected original validation details to be preserved, got %#v", cliErr.Details)
+	}
+}
+
+func TestExecutor_PlaceOrder_WrapsSlWireValidationError(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), &mockResolver{
+		info: &resolver.AssetInfo{
+			AssetID:    0,
+			Coin:       "BTC",
+			SzDecimals: 3,
+			IsSpot:     false,
+		},
+	}, false)
+
+	invalidSl := "49500.12" // exceeds 5 significant figures for wire price rules.
+	_, err = exec.PlaceOrder(context.Background(), PlaceOrderInput{
+		Coin:      "BTC",
+		Side:      "buy",
+		Price:     decimal.NewFromInt(50000),
+		Size:      decimal.RequireFromString("0.01"),
+		Tif:       "Gtc",
+		SlTrigger: &invalidSl,
+		DryRun:    true,
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrValidation {
+		t.Errorf("code = %q, want %q", cliErr.Code, output.ErrValidation)
+	}
+	if got := cliErr.Details["flag"]; got != "--sl" {
+		t.Errorf("details.flag = %v, want --sl", got)
+	}
+	if !strings.Contains(cliErr.Message, "--sl trigger price:") {
+		t.Errorf("message = %q, want --sl trigger context", cliErr.Message)
+	}
+	if _, ok := cliErr.Details["max_sig_figs"]; !ok {
+		t.Errorf("expected original validation details to be preserved, got %#v", cliErr.Details)
 	}
 }
 

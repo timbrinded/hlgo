@@ -10,6 +10,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/timbrinded/hlgo/pkg/info"
+	"github.com/timbrinded/hlgo/pkg/output"
 )
 
 func TestAgentSubcommands_Registered(t *testing.T) {
@@ -185,6 +186,26 @@ func TestAgentSnapshot_PartialFailure(t *testing.T) {
 	errorsList, ok := result["errors"].([]any)
 	if !ok || len(errorsList) == 0 {
 		t.Fatalf("errors = %T %v, want non-empty array", result["errors"], result["errors"])
+	}
+}
+
+func TestToAgentStepError_PreservesDetails(t *testing.T) {
+	in := output.NewCLIError(output.ErrValidation, "invalid value").
+		WithDetails("value", "1014.33").
+		WithDetails("nearest_valid", "1014.3")
+
+	got := toAgentStepError("tp", in)
+	if got.Code != output.ErrValidation {
+		t.Fatalf("code = %q, want %q", got.Code, output.ErrValidation)
+	}
+	if got.Details == nil {
+		t.Fatal("expected details to be preserved")
+	}
+	if got.Details["value"] != "1014.33" {
+		t.Fatalf("details.value = %v, want 1014.33", got.Details["value"])
+	}
+	if got.Details["nearest_valid"] != "1014.3" {
+		t.Fatalf("details.nearest_valid = %v, want 1014.3", got.Details["nearest_valid"])
 	}
 }
 

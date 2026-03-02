@@ -14,9 +14,10 @@ import (
 )
 
 type agentStepError struct {
-	Step  string           `json:"step"`
-	Code  output.ErrorCode `json:"code"`
-	Error string           `json:"error"`
+	Step    string           `json:"step"`
+	Code    output.ErrorCode `json:"code"`
+	Error   string           `json:"error"`
+	Details map[string]any   `json:"details,omitempty"`
 }
 
 type agentSnapshotResult struct {
@@ -200,10 +201,18 @@ func newAgentSnapshotCmd() *cobra.Command {
 func toAgentStepError(step string, err error) agentStepError {
 	var cliErr *output.CLIError
 	if errors.As(err, &cliErr) {
+		var details map[string]any
+		if len(cliErr.Details) > 0 {
+			details = make(map[string]any, len(cliErr.Details))
+			for k, v := range cliErr.Details {
+				details[k] = v
+			}
+		}
 		return agentStepError{
-			Step:  step,
-			Code:  cliErr.Code,
-			Error: cliErr.Message,
+			Step:    step,
+			Code:    cliErr.Code,
+			Error:   cliErr.Message,
+			Details: details,
 		}
 	}
 
