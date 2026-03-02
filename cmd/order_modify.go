@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/shopspring/decimal"
 	"github.com/spf13/cobra"
 
@@ -68,6 +69,11 @@ func newOrderModifyCmd() *cobra.Command {
 					return output.NewCLIError(output.ErrValidation, "expires-after must be a positive Unix ms timestamp")
 				}
 				expiresAfter = &ms
+			}
+
+			if vault != "" && !common.IsHexAddress(vault) {
+				return output.NewCLIError(output.ErrValidation, "invalid vault address").
+					WithDetails("vault", vault)
 			}
 
 			exec, err := buildExecutor(cfg)

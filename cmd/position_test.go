@@ -55,6 +55,18 @@ func TestPositionLeverage_InvalidMode(t *testing.T) {
 	}
 }
 
+func TestPositionLeverage_InvalidVault(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("position", "leverage",
+		"--coin", "ETH", "--leverage", "5", "--mode", "cross",
+		"--vault", "not-a-hex-address", "--dry-run",
+	)
+	if err == nil {
+		t.Fatal("expected error for invalid vault address")
+	}
+}
+
 func TestPositionLeverage_InvalidLeverage(t *testing.T) {
 	_, _, run := newTestRootWithServer(t, "")
 
@@ -91,6 +103,18 @@ func TestPositionMargin_DryRun(t *testing.T) {
 	}
 	if result["ntli"] != float64(100500000) {
 		t.Errorf("ntli = %v, want 100500000", result["ntli"])
+	}
+}
+
+func TestPositionMargin_InvalidVault(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("position", "margin",
+		"--coin", "BTC", "--side", "buy", "--amount", "100",
+		"--vault", "not-a-hex-address", "--dry-run",
+	)
+	if err == nil {
+		t.Fatal("expected error for invalid vault address")
 	}
 }
 

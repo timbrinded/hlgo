@@ -123,6 +123,13 @@ type PlaceOrderResult struct {
 	Resolved *ResolvedOrder  `json:"resolved,omitempty"`
 }
 
+// ModifyOrderResult holds the result of a modify order operation.
+type ModifyOrderResult struct {
+	Response json.RawMessage `json:"response,omitempty"`
+	Action   *ModifyAction   `json:"action,omitempty"`
+	Resolved *ResolvedOrder  `json:"resolved,omitempty"`
+}
+
 // ResolvedOrder holds the resolved and validated order details for dry-run output.
 type ResolvedOrder struct {
 	Coin       string `json:"coin"`
@@ -453,7 +460,7 @@ func (e *Executor) UpdateIsolatedMargin(ctx context.Context, input UpdateIsolate
 }
 
 // ModifyOrder modifies an existing order.
-func (e *Executor) ModifyOrder(ctx context.Context, input ModifyOrderInput) (*PlaceOrderResult, error) {
+func (e *Executor) ModifyOrder(ctx context.Context, input ModifyOrderInput) (*ModifyOrderResult, error) {
 	info, err := e.resolver.ResolveAsset(ctx, input.Coin)
 	if err != nil {
 		return nil, err
@@ -497,12 +504,8 @@ func (e *Executor) ModifyOrder(ctx context.Context, input ModifyOrderInput) (*Pl
 	}
 
 	if input.DryRun {
-		actionJSON, err := json.Marshal(action)
-		if err != nil {
-			return nil, err
-		}
-		return &PlaceOrderResult{
-			Response: actionJSON,
+		return &ModifyOrderResult{
+			Action:   action,
 			Resolved: resolved,
 		}, nil
 	}
@@ -525,7 +528,7 @@ func (e *Executor) ModifyOrder(ctx context.Context, input ModifyOrderInput) (*Pl
 		return nil, err
 	}
 
-	return &PlaceOrderResult{
+	return &ModifyOrderResult{
 		Response: resp,
 		Resolved: resolved,
 	}, nil
@@ -559,6 +562,8 @@ func (e *Executor) ScheduleCancel(ctx context.Context, input ScheduleCancelInput
 
 	nonce := time.Now().UnixMilli()
 
+	// ScheduleCancel does not support vault addresses — the Hyperliquid API
+	// applies the dead man's switch to the signing wallet only.
 	sig, err := e.signer.SignL1Action(action, nonce, nil, nil, e.mainnet)
 	if err != nil {
 		return nil, err

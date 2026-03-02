@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
 
 	"github.com/timbrinded/hlgo/pkg/config"
@@ -29,6 +30,11 @@ func newPositionLeverageCmd() *cobra.Command {
 					WithDetails("value", leverage)
 			}
 
+			if vault != "" && !common.IsHexAddress(vault) {
+				return output.NewCLIError(output.ErrValidation, "invalid vault address").
+					WithDetails("vault", vault)
+			}
+
 			exec, err := buildExecutor(cfg)
 			if err != nil {
 				return err
@@ -50,7 +56,7 @@ func newPositionLeverageCmd() *cobra.Command {
 	}
 
 	cmd.Flags().String("coin", "", "coin name (e.g. BTC, ETH)")
-	cmd.Flags().Int("leverage", 0, "leverage multiplier")
+	cmd.Flags().Int("leverage", 0, "leverage multiplier (max is asset-specific, API-enforced)")
 	cmd.Flags().String("mode", "cross", "margin mode: cross or isolated")
 	cmd.Flags().String("vault", "", "vault address")
 

@@ -92,14 +92,15 @@ func TestExecutor_PlaceOrder_DryRun(t *testing.T) {
 	if result.Resolved.Coin != "BTC" {
 		t.Errorf("Resolved.Coin = %q, want BTC", result.Resolved.Coin)
 	}
-	if result.Action.Orders[0].P != "50000" {
-		t.Errorf("price = %q, want 50000", result.Action.Orders[0].P)
+	action := result.Action
+	if action.Orders[0].P != "50000" {
+		t.Errorf("price = %q, want 50000", action.Orders[0].P)
 	}
-	if result.Action.Builder == nil {
+	if action.Builder == nil {
 		t.Fatal("expected builder in action")
 	}
-	if result.Action.Builder.F != 10 {
-		t.Errorf("builder fee = %d, want 10", result.Action.Builder.F)
+	if action.Builder.F != 10 {
+		t.Errorf("builder fee = %d, want 10", action.Builder.F)
 	}
 }
 
@@ -136,13 +137,14 @@ func TestExecutor_PlaceMarketOrder_DryRunPerp(t *testing.T) {
 	if result.Action == nil {
 		t.Fatal("expected action in dry-run result")
 	}
-	if len(result.Action.Orders) != 1 {
-		t.Fatalf("expected 1 order, got %d", len(result.Action.Orders))
+	action := result.Action
+	if len(action.Orders) != 1 {
+		t.Fatalf("expected 1 order, got %d", len(action.Orders))
 	}
-	if got := result.Action.Orders[0].T.Limit.Tif; got != "Ioc" {
+	if got := action.Orders[0].T.Limit.Tif; got != "Ioc" {
 		t.Errorf("Tif = %q, want Ioc", got)
 	}
-	if got := result.Action.Orders[0].P; got != "49750" {
+	if got := action.Orders[0].P; got != "49750" {
 		t.Errorf("price = %q, want 49750", got)
 	}
 }
@@ -456,15 +458,16 @@ func TestExecutor_PlaceOrder_TpOnlyTrigger(t *testing.T) {
 	}
 
 	// 2 wires: main limit + TP trigger.
-	if len(result.Action.Orders) != 2 {
-		t.Fatalf("expected 2 order wires, got %d", len(result.Action.Orders))
+	action := result.Action
+	if len(action.Orders) != 2 {
+		t.Fatalf("expected 2 order wires, got %d", len(action.Orders))
 	}
-	if result.Action.Grouping != "normalTpsl" {
-		t.Errorf("Grouping = %q, want normalTpSl", result.Action.Grouping)
+	if action.Grouping != "normalTpsl" {
+		t.Errorf("Grouping = %q, want normalTpSl", action.Grouping)
 	}
 
 	// TP trigger is buy (opposite of sell).
-	tpWire := result.Action.Orders[1]
+	tpWire := action.Orders[1]
 	if tpWire.B != true {
 		t.Error("TP trigger on sell order should be buy")
 	}
@@ -680,6 +683,16 @@ func TestExecutor_ModifyOrder_DryRun(t *testing.T) {
 		t.Fatalf("ModifyOrder dry-run error: %v", err)
 	}
 
+	if result.Action == nil {
+		t.Fatal("expected action in dry-run result")
+	}
+	if result.Response != nil {
+		t.Error("expected nil response in dry-run")
+	}
+	modAction := result.Action
+	if modAction.Oid != 12345 {
+		t.Errorf("Oid = %d, want 12345", modAction.Oid)
+	}
 	if result.Resolved == nil {
 		t.Fatal("expected resolved in dry-run result")
 	}

@@ -3,6 +3,7 @@ package cmd
 import (
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/shopspring/decimal"
 	"github.com/spf13/cobra"
 
@@ -32,6 +33,11 @@ func newPositionMarginCmd() *cobra.Command {
 			if err != nil {
 				return output.NewCLIError(output.ErrValidation, "invalid amount").
 					WithDetails("value", amountStr)
+			}
+
+			if vault != "" && !common.IsHexAddress(vault) {
+				return output.NewCLIError(output.ErrValidation, "invalid vault address").
+					WithDetails("vault", vault)
 			}
 
 			exec, err := buildExecutor(cfg)

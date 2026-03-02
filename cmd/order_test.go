@@ -256,8 +256,24 @@ func TestOrderModify_DryRun(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("failed to parse output: %v\nraw: %s", err, stdout.String())
 	}
+	if result["action"] == nil {
+		t.Error("expected 'action' in dry-run output")
+	}
 	if result["resolved"] == nil {
 		t.Error("expected 'resolved' in dry-run output")
+	}
+}
+
+func TestOrderModify_InvalidVault(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("order", "modify",
+		"--coin", "BTC", "--oid", "12345", "--side", "buy",
+		"--price", "50000", "--size", "0.01",
+		"--vault", "not-a-hex-address", "--dry-run",
+	)
+	if err == nil {
+		t.Fatal("expected error for invalid vault address")
 	}
 }
 
