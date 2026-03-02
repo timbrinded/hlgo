@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"strings"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
 
@@ -20,6 +22,7 @@ func newPositionLeverageCmd() *cobra.Command {
 			mode, _ := cmd.Flags().GetString("mode")      //nolint:errcheck // known flag
 			vault, _ := cmd.Flags().GetString("vault")    //nolint:errcheck // known flag
 
+			mode = strings.ToLower(mode)
 			if mode != "cross" && mode != "isolated" {
 				return output.NewCLIError(output.ErrValidation, "mode must be 'cross' or 'isolated'").
 					WithDetails("value", mode)

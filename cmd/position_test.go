@@ -55,6 +55,17 @@ func TestPositionLeverage_InvalidMode(t *testing.T) {
 	}
 }
 
+func TestPositionLeverage_ModeCaseInsensitive(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("position", "leverage",
+		"--coin", "ETH", "--leverage", "5", "--mode", "Cross", "--dry-run",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error for mixed-case mode: %v", err)
+	}
+}
+
 func TestPositionLeverage_InvalidVault(t *testing.T) {
 	_, _, run := newTestRootWithServer(t, "")
 

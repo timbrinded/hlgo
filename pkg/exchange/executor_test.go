@@ -655,6 +655,36 @@ func TestExecutor_UpdateIsolatedMargin_NegativeAmount(t *testing.T) {
 	}
 }
 
+func TestExecutor_UpdateIsolatedMargin_AmountOverflow(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), &mockResolver{
+		info: &resolver.AssetInfo{
+			AssetID:    0,
+			Coin:       "BTC",
+			SzDecimals: 3,
+		},
+	}, false)
+
+	amount, err := decimal.NewFromString("9223372036854.775808")
+	if err != nil {
+		t.Fatalf("parse amount: %v", err)
+	}
+
+	_, err = exec.UpdateIsolatedMargin(context.Background(), UpdateIsolatedMarginInput{
+		Coin:   "BTC",
+		IsBuy:  true,
+		Amount: amount,
+		DryRun: true,
+	})
+	if err == nil {
+		t.Fatal("expected validation error for out-of-range ntli")
+	}
+}
+
 func TestExecutor_ModifyOrder_DryRun(t *testing.T) {
 	s, err := signer.NewSigner(testPrivateKey)
 	if err != nil {

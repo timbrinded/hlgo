@@ -42,6 +42,10 @@ or clear an existing schedule. Exactly one of --timeout or --clear must be provi
 					return output.NewCLIError(output.ErrValidation, "timeout must be positive").
 						WithDetails("value", timeoutStr)
 				}
+				if d < 5*time.Second {
+					return output.NewCLIError(output.ErrValidation, "timeout must be at least 5 seconds").
+						WithDetails("value", timeoutStr)
+				}
 				ms := time.Now().Add(d).UnixMilli()
 				cancelTime = &ms
 			}

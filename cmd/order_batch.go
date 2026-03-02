@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/shopspring/decimal"
@@ -193,5 +194,5 @@ func newOrderBatchCmd() *cobra.Command {
 func buildBatchResolver(cfg *config.Config) resolver.Resolver {
 	c := buildHTTPClient(cfg)
 	cacheDir := resolveCacheDir(cfg)
-	return resolver.NewResolver(c, cacheDir, 0)
+	return resolver.NewResolver(c, cacheDir, time.Duration(cfg.MetadataTTL)*time.Second)
 }

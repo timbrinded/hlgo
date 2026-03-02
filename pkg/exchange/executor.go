@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 
@@ -436,8 +437,13 @@ func (e *Executor) UpdateIsolatedMargin(ctx context.Context, input UpdateIsolate
 		return nil, output.NewCLIError(output.ErrValidation, "amount precision exceeds 6 decimal places").
 			WithDetails("value", input.Amount.String())
 	}
+	ntliInt, err := strconv.ParseInt(ntli.String(), 10, 64)
+	if err != nil {
+		return nil, output.NewCLIError(output.ErrValidation, "amount is out of range").
+			WithDetails("value", input.Amount.String())
+	}
 
-	action := BuildUpdateIsolatedMarginAction(info.AssetID, input.IsBuy, ntli.IntPart())
+	action := BuildUpdateIsolatedMarginAction(info.AssetID, input.IsBuy, ntliInt)
 
 	if input.DryRun {
 		return json.Marshal(action)

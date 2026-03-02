@@ -10,6 +10,7 @@ import (
 
 	"github.com/timbrinded/hlgo/pkg/config"
 	"github.com/timbrinded/hlgo/pkg/exchange"
+	"github.com/timbrinded/hlgo/pkg/info"
 	"github.com/timbrinded/hlgo/pkg/output"
 )
 
@@ -46,6 +47,25 @@ func newOrderModifyCmd() *cobra.Command {
 				return output.NewCLIError(output.ErrValidation, "invalid tif: "+tifFlag).
 					WithDetails("value", tifFlag).
 					WithDetails("valid", "gtc, ioc, alo")
+			}
+
+			hasPrice := cmd.Flags().Changed("price")
+			hasSize := cmd.Flags().Changed("size")
+			if !hasPrice && !hasSize {
+				return output.NewCLIError(output.ErrValidation, "at least one of --price or --size is required")
+			}
+
+			if !hasPrice || !hasSize {
+				existing, err := lookupOpenOrderByOID(cmd, cfg, oid, coin)
+				if err != nil {
+					return err
+				}
+				if !hasPrice {
+					priceStr = existing.LimitPx
+				}
+				if !hasSize {
+					sizeStr = existing.Sz
+				}
 			}
 
 			price, err := decimal.NewFromString(priceStr)
@@ -104,17 +124,60 @@ func newOrderModifyCmd() *cobra.Command {
 	cmd.Flags().String("coin", "", "coin name (e.g. BTC, ETH)")
 	cmd.Flags().String("oid", "", "order ID to modify")
 	cmd.Flags().String("side", "", "buy or sell")
-	cmd.Flags().String("price", "", "new limit price")
-	cmd.Flags().String("size", "", "new order size")
+	cmd.Flags().String("price", "", "new limit price (optional if --size is set)")
+	cmd.Flags().String("size", "", "new order size (optional if --price is set)")
 	cmd.Flags().String("tif", "gtc", "time in force: gtc, ioc, alo")
 	cmd.Flags().Bool("reduce", false, "reduce-only order")
 	cmd.Flags().String("vault", "", "vault address")
 	cmd.Flags().String("expires-after", "", "expiry timestamp (Unix ms or ISO 8601)")
 
-	for _, required := range []string{"coin", "oid", "side", "price", "size"} {
+	for _, required := range []string{"coin", "oid", "side"} {
 		//nolint:errcheck // MarkFlagRequired on known flags never fails
 		cmd.MarkFlagRequired(required)
 	}
 
 	return cmd
+}
+
+func lookupOpenOrderByOID(cmd *cobra.Command, cfg *config.Config, oid uint64, coin string) (*info.OpenOrder, error) {
+	addr, err := info.ResolveUserAddress("", cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	ic := buildInfoClient(cfg)
+	dex := cfg.Dex
+	if dex == "" {
+		if idx := strings.Index(coin, ":"); idx > 0 {
+			dex = strings.ToLower(strings.TrimSpace(coin[:idx]))
+		}
+	}
+	raw, err := ic.FrontendOpenOrders(cmd.Context(), addr, dex)
+	if err != nil {
+		return nil, err
+	}
+
+	orders, err := info.ParseOpenOrdersResult(raw)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, ord := range orders {
+		if ord.Oid < 0 {
+			continue
+		}
+		if uint64(ord.Oid) != oid {
+			continue
+		}
+		if coin != "" && !strings.EqualFold(ord.Coin, coin) {
+			continue
+		}
+		order := ord
+		return &order, nil
+	}
+
+	return nil, output.NewCLIError(output.ErrValidation, "order not found for modify backfill").
+		WithDetails("oid", oid).
+		WithDetails("coin", coin).
+		WithDetails("hint", "ensure the order is still open or provide both --price and --size")
 }

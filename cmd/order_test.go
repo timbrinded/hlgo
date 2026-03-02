@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 
@@ -264,6 +266,48 @@ func TestOrderModify_DryRun(t *testing.T) {
 	}
 }
 
+func TestOrderModify_DryRun_PriceOnly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/info" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"coin":"BTC","side":"B","limitPx":"50000","sz":"0.02","oid":12345}]`))
+	}))
+	defer srv.Close()
+
+	t.Setenv("HLGO_API_URL", srv.URL)
+	stdout, _, run := newTestRootWithServer(t, "")
+
+	err := run("order", "modify",
+		"--coin", "BTC", "--oid", "12345", "--side", "buy",
+		"--price", "51000", "--dry-run",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse output: %v\nraw: %s", err, stdout.String())
+	}
+	action, ok := result["action"].(map[string]any)
+	if !ok {
+		t.Fatalf("action = %T, want object", result["action"])
+	}
+	order, ok := action["order"].(map[string]any)
+	if !ok {
+		t.Fatalf("order = %T, want object", action["order"])
+	}
+	if got := order["p"]; got != "51000" {
+		t.Errorf("price = %v, want 51000", got)
+	}
+	if got := order["s"]; got != "0.02" {
+		t.Errorf("size = %v, want 0.02", got)
+	}
+}
+
 func TestOrderModify_InvalidVault(t *testing.T) {
 	_, _, run := newTestRootWithServer(t, "")
 
@@ -283,6 +327,17 @@ func TestOrderModify_RequiredFlags(t *testing.T) {
 	err := run("order", "modify", "--dry-run")
 	if err == nil {
 		t.Fatal("expected error for missing required flags")
+	}
+}
+
+func TestOrderModify_RequiresPriceOrSize(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("order", "modify",
+		"--coin", "BTC", "--oid", "12345", "--side", "buy", "--dry-run",
+	)
+	if err == nil {
+		t.Fatal("expected error when neither --price nor --size is provided")
 	}
 }
 
@@ -342,6 +397,15 @@ func TestOrderScheduleCancel_NeitherFlag(t *testing.T) {
 	err := run("order", "schedule-cancel", "--dry-run")
 	if err == nil {
 		t.Fatal("expected error when neither --timeout nor --clear provided")
+	}
+}
+
+func TestOrderScheduleCancel_TimeoutTooShort(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("order", "schedule-cancel", "--timeout", "1s", "--dry-run")
+	if err == nil {
+		t.Fatal("expected error when timeout is less than 5 seconds")
 	}
 }
 
