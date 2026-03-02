@@ -12,7 +12,7 @@ import (
 func newAccountClassTransferCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "class-transfer",
-		Short: "Execute classTransfer account action",
+		Short: "Alias of transfer using usdClassTransfer semantics",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
 			amountStr, _ := cmd.Flags().GetString("amount") //nolint:errcheck // known flag
@@ -34,7 +34,7 @@ func newAccountClassTransferCmd() *cobra.Command {
 				return err
 			}
 
-			raw, err := exec.ClassTransfer(cmd.Context(), exchange.ClassTransferInput{
+			raw, err := exec.USDClassTransfer(cmd.Context(), exchange.USDClassTransferInput{
 				Amount: amount,
 				ToPerp: toPerp,
 				DryRun: cfg.DryRun,

@@ -139,6 +139,126 @@ func TestPostExchange_OmitsEmptyVaultAddress(t *testing.T) {
 	}
 }
 
+func TestPostExchange_StatusErrReturnsAPIError(t *testing.T) {
+	srv := newTestServer(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":"err","response":"invalid agent_name."}`)
+	})
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	_, err := c.PostExchange(
+		context.Background(),
+		map[string]string{"type": "approveAgent"},
+		1700000000000,
+		SignatureWire{R: "0x1", S: "0x2", V: 27},
+		"",
+		nil,
+	)
+	if err == nil {
+		t.Fatal("expected error for exchange status=err")
+	}
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected *output.CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrAPI {
+		t.Errorf("error code = %s, want %s", cliErr.Code, output.ErrAPI)
+	}
+	if cliErr.Message != "exchange error: invalid agent_name." {
+		t.Errorf("message = %q, want %q", cliErr.Message, "exchange error: invalid agent_name.")
+	}
+	if cliErr.Details["path"] != "/exchange" {
+		t.Errorf("path = %v, want /exchange", cliErr.Details["path"])
+	}
+	if cliErr.Details["exchange_status"] != "err" {
+		t.Errorf("exchange_status = %v, want err", cliErr.Details["exchange_status"])
+	}
+	if cliErr.Details["exchange_response"] != "invalid agent_name." {
+		t.Errorf("exchange_response = %v, want invalid agent_name.", cliErr.Details["exchange_response"])
+	}
+}
+
+func TestPostExchange_OrderStatusesErrorReturnsAPIError(t *testing.T) {
+	srv := newTestServer(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":"ok","response":{"type":"order","data":{"statuses":[{"error":"Order price cannot be more than 80% away from the reference price"}]}}}`)
+	})
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	_, err := c.PostExchange(
+		context.Background(),
+		map[string]string{"type": "order"},
+		1700000000000,
+		SignatureWire{R: "0x1", S: "0x2", V: 27},
+		"",
+		nil,
+	)
+	if err == nil {
+		t.Fatal("expected error for exchange data.statuses[].error")
+	}
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected *output.CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrAPI {
+		t.Errorf("error code = %s, want %s", cliErr.Code, output.ErrAPI)
+	}
+	if cliErr.Message != "exchange action returned error statuses" {
+		t.Errorf("message = %q, want %q", cliErr.Message, "exchange action returned error statuses")
+	}
+
+	rawErrors, ok := cliErr.Details["exchange_errors"].([]string)
+	if !ok {
+		t.Fatalf("exchange_errors is not []string: %#v", cliErr.Details["exchange_errors"])
+	}
+	if len(rawErrors) != 1 {
+		t.Fatalf("exchange_errors len = %d, want 1", len(rawErrors))
+	}
+	if rawErrors[0] != "Order price cannot be more than 80% away from the reference price" {
+		t.Errorf("exchange_errors[0] = %q", rawErrors[0])
+	}
+}
+
+func TestPostExchange_MixedOrderStatusesDetectsError(t *testing.T) {
+	srv := newTestServer(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":"ok","response":{"type":"cancel","data":{"statuses":["success",{"error":"order was already canceled"},"success"]}}}`)
+	})
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	_, err := c.PostExchange(
+		context.Background(),
+		map[string]string{"type": "cancel"},
+		1700000000000,
+		SignatureWire{R: "0x1", S: "0x2", V: 27},
+		"",
+		nil,
+	)
+	if err == nil {
+		t.Fatal("expected error for mixed statuses containing an error entry")
+	}
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected *output.CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrAPI {
+		t.Errorf("error code = %s, want %s", cliErr.Code, output.ErrAPI)
+	}
+	rawErrors, ok := cliErr.Details["exchange_errors"].([]string)
+	if !ok {
+		t.Fatalf("exchange_errors is not []string: %#v", cliErr.Details["exchange_errors"])
+	}
+	if len(rawErrors) != 1 || rawErrors[0] != "order was already canceled" {
+		t.Fatalf("unexpected exchange_errors: %#v", rawErrors)
+	}
+}
+
 func TestPostInfo_4xx_NotRetried(t *testing.T) {
 	var callCount atomic.Int32
 

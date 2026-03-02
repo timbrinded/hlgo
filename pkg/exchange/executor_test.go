@@ -826,6 +826,35 @@ func TestExecutor_USDClassTransfer_DryRun(t *testing.T) {
 	}
 }
 
+func TestExecutor_ClassTransfer_DryRunUsesUSDClassTransferAction(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), nil, false)
+
+	raw, err := exec.ClassTransfer(context.Background(), ClassTransferInput{
+		Amount: decimal.NewFromFloat(1.5),
+		ToPerp: false,
+		DryRun: true,
+	})
+	if err != nil {
+		t.Fatalf("ClassTransfer dry-run error: %v", err)
+	}
+
+	var action map[string]any
+	if err := json.Unmarshal(raw, &action); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if action["type"] != "usdClassTransfer" {
+		t.Errorf("type = %v, want usdClassTransfer", action["type"])
+	}
+	if action["toPerp"] != false {
+		t.Errorf("toPerp = %v, want false", action["toPerp"])
+	}
+}
+
 func TestExecutor_Withdraw3_InvalidDestination(t *testing.T) {
 	s, err := signer.NewSigner(testPrivateKey)
 	if err != nil {
@@ -856,6 +885,31 @@ func TestExecutor_ApproveAgent_InvalidAddress(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected validation error for invalid agent address")
+	}
+}
+
+func TestExecutor_ApproveAgent_RevokeDryRunOmitsAgentName(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+	exec := NewExecutor(s, client.NewClient("http://unused"), nil, false)
+
+	raw, err := exec.ApproveAgent(context.Background(), ApproveAgentInput{
+		AgentAddress: "0x1111111111111111111111111111111111111111",
+		AgentName:    "",
+		DryRun:       true,
+	})
+	if err != nil {
+		t.Fatalf("ApproveAgent dry-run error: %v", err)
+	}
+
+	var action map[string]any
+	if err := json.Unmarshal(raw, &action); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, exists := action["agentName"]; exists {
+		t.Fatalf("agentName should be omitted on revoke-style payload, got %#v", action["agentName"])
 	}
 }
 
@@ -931,12 +985,37 @@ func TestExecutor_UserSetAbstraction_SendsToExchange(t *testing.T) {
 
 	resp, err := exec.UserSetAbstraction(context.Background(), UserSetAbstractionInput{
 		User:        "0x1111111111111111111111111111111111111111",
-		Abstraction: "none",
+		Abstraction: "disabled",
 	})
 	if err != nil {
 		t.Fatalf("UserSetAbstraction error: %v", err)
 	}
 	if len(resp) == 0 {
 		t.Fatal("expected non-empty response")
+	}
+}
+
+func TestExecutor_UserSetAbstraction_InvalidValue(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+	exec := NewExecutor(s, client.NewClient("http://unused"), nil, false)
+
+	_, err = exec.UserSetAbstraction(context.Background(), UserSetAbstractionInput{
+		User:        "0x1111111111111111111111111111111111111111",
+		Abstraction: "none",
+		DryRun:      true,
+	})
+	if err == nil {
+		t.Fatal("expected validation error for unsupported abstraction")
+	}
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrValidation {
+		t.Errorf("code = %q, want %q", cliErr.Code, output.ErrValidation)
 	}
 }

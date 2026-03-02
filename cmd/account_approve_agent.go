@@ -31,12 +31,20 @@ Note: Hyperliquid may charge an activation fee when first approving an agent.`,
 					WithDetails("agent", agent)
 			}
 
-			agentName := name
-			if revoke {
+			agentName := strings.TrimSpace(name)
+			switch {
+			case revoke:
 				if err := requireConfirm("approve-agent --revoke", confirm || yes, cfg.DryRun); err != nil {
 					return err
 				}
 				agentName = ""
+			case agentName == "":
+				return output.NewCLIError(output.ErrValidation, "agent name is required unless --revoke is set").
+					WithDetails("hint", "set --name <1-16 chars> to approve, or use --revoke with --confirm to revoke")
+			case len(agentName) > 16:
+				return output.NewCLIError(output.ErrValidation, "agent name must be at most 16 characters").
+					WithDetails("value", agentName).
+					WithDetails("max_length", 16)
 			}
 
 			exec, err := buildMasterExecutor(cfg)

@@ -189,6 +189,12 @@ type ResolvedOrder struct {
 
 const userSignatureChainID = "0x66eee"
 
+var supportedUserAbstractions = map[string]struct{}{
+	"unifiedAccount":  {},
+	"portfolioMargin": {},
+	"disabled":        {},
+}
+
 var (
 	usdClassTransferSignTypes = []apitypes.Type{
 		{Name: "hyperliquidChain", Type: "string"},
@@ -708,12 +714,12 @@ func (e *Executor) ClassTransfer(ctx context.Context, input ClassTransferInput) 
 	}
 
 	nonce := time.Now().UnixMilli()
-	action := BuildClassTransferAction(input.Amount.String(), input.ToPerp, nonce)
+	action := BuildUSDClassTransferAction(input.Amount.String(), input.ToPerp, nonce)
 	return e.executeUserAction(
 		ctx,
 		action,
 		nonce,
-		"HyperliquidTransaction:ClassTransfer",
+		"HyperliquidTransaction:UsdClassTransfer",
 		usdClassTransferSignTypes,
 		input.DryRun,
 	)
@@ -770,12 +776,18 @@ func (e *Executor) UserSetAbstraction(ctx context.Context, input UserSetAbstract
 		return nil, output.NewCLIError(output.ErrValidation, "invalid user address").
 			WithDetails("user", input.User)
 	}
-	if strings.TrimSpace(input.Abstraction) == "" {
+	abstraction := strings.TrimSpace(input.Abstraction)
+	if abstraction == "" {
 		return nil, output.NewCLIError(output.ErrValidation, "abstraction is required")
+	}
+	if _, ok := supportedUserAbstractions[abstraction]; !ok {
+		return nil, output.NewCLIError(output.ErrValidation, "unsupported abstraction value").
+			WithDetails("value", abstraction).
+			WithDetails("allowed", []string{"unifiedAccount", "portfolioMargin", "disabled"})
 	}
 
 	nonce := time.Now().UnixMilli()
-	action := BuildUserSetAbstractionAction(strings.ToLower(input.User), input.Abstraction, nonce)
+	action := BuildUserSetAbstractionAction(strings.ToLower(input.User), abstraction, nonce)
 	return e.executeUserAction(
 		ctx,
 		action,
@@ -816,21 +828,30 @@ func (e *Executor) executeUserAction(
 		if field.Name == "hyperliquidChain" {
 			continue
 		}
-		if value, ok := actionMap[field.Name]; ok {
-			if strings.HasPrefix(field.Type, "uint") {
-				switch v := value.(type) {
-				case int64:
-					value = strconv.FormatInt(v, 10)
-				case int:
-					value = strconv.Itoa(v)
-				case uint64:
-					value = strconv.FormatUint(v, 10)
-				case uint:
-					value = strconv.FormatUint(uint64(v), 10)
-				}
+
+		value, ok := actionMap[field.Name]
+		if !ok {
+			// Revoke flow signs agentName="" but omits the field from the wire payload.
+			if typeName == "HyperliquidTransaction:ApproveAgent" && field.Name == "agentName" {
+				value = ""
+			} else {
+				continue
 			}
-			signMessage[field.Name] = value
 		}
+
+		if strings.HasPrefix(field.Type, "uint") {
+			switch v := value.(type) {
+			case int64:
+				value = strconv.FormatInt(v, 10)
+			case int:
+				value = strconv.Itoa(v)
+			case uint64:
+				value = strconv.FormatUint(v, 10)
+			case uint:
+				value = strconv.FormatUint(uint64(v), 10)
+			}
+		}
+		signMessage[field.Name] = value
 	}
 
 	sig, err := e.signer.SignUserAction(typeName, typeFields, signMessage, e.mainnet)
@@ -873,12 +894,15 @@ func userActionMap(action any) (map[string]any, error) {
 			"time":        a.Time,
 		}, nil
 	case *ApproveAgentAction:
-		return map[string]any{
+		m := map[string]any{
 			"type":         a.Type,
 			"agentAddress": a.AgentAddress,
-			"agentName":    a.AgentName,
 			"nonce":        a.Nonce,
-		}, nil
+		}
+		if strings.TrimSpace(a.AgentName) != "" {
+			m["agentName"] = a.AgentName
+		}
+		return m, nil
 	case *UserSetAbstractionAction:
 		return map[string]any{
 			"type":        a.Type,

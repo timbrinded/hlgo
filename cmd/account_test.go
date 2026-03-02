@@ -165,12 +165,24 @@ func TestAccountApproveAgent_DryRun(t *testing.T) {
 	}
 }
 
+func TestAccountApproveAgent_NameRequiredWithoutRevoke(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("account", "approve-agent",
+		"--agent", "0x1111111111111111111111111111111111111111",
+		"--dry-run",
+	)
+	if err == nil {
+		t.Fatal("expected validation error when name is omitted without --revoke")
+	}
+}
+
 func TestAccountSetAbstraction_DryRun(t *testing.T) {
 	stdout, _, run := newTestRootWithServer(t, "")
 
 	err := run("account", "set-abstraction",
 		"--user", "0x1111111111111111111111111111111111111111",
-		"--abstraction", "none",
+		"--abstraction", "disabled",
 		"--dry-run",
 	)
 	if err != nil {
@@ -183,6 +195,19 @@ func TestAccountSetAbstraction_DryRun(t *testing.T) {
 	}
 	if result["type"] != "userSetAbstraction" {
 		t.Errorf("type = %v, want userSetAbstraction", result["type"])
+	}
+}
+
+func TestAccountSetAbstraction_InvalidValue(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("account", "set-abstraction",
+		"--user", "0x1111111111111111111111111111111111111111",
+		"--abstraction", "none",
+		"--dry-run",
+	)
+	if err == nil {
+		t.Fatal("expected validation error for unsupported abstraction")
 	}
 }
 
@@ -200,8 +225,21 @@ func TestAccountClassTransfer_DryRun(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("failed to parse output: %v\nraw: %s", err, stdout.String())
 	}
-	if result["type"] != "classTransfer" {
-		t.Errorf("type = %v, want classTransfer", result["type"])
+	if result["type"] != "usdClassTransfer" {
+		t.Errorf("type = %v, want usdClassTransfer", result["type"])
+	}
+}
+
+func TestAccountApproveAgent_NameTooLong(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("account", "approve-agent",
+		"--agent", "0x1111111111111111111111111111111111111111",
+		"--name", "this-name-is-way-too-long",
+		"--dry-run",
+	)
+	if err == nil {
+		t.Fatal("expected validation error for long agent name")
 	}
 }
 

@@ -11,6 +11,12 @@ import (
 	"github.com/timbrinded/hlgo/pkg/output"
 )
 
+var allowedAbstractions = map[string]struct{}{
+	"unifiedAccount":  {},
+	"portfolioMargin": {},
+	"disabled":        {},
+}
+
 func newAccountSetAbstractionCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set-abstraction",
@@ -24,8 +30,14 @@ func newAccountSetAbstractionCmd() *cobra.Command {
 				return output.NewCLIError(output.ErrValidation, "invalid user address").
 					WithDetails("user", user)
 			}
-			if strings.TrimSpace(abstraction) == "" {
+			abstraction = strings.TrimSpace(abstraction)
+			if abstraction == "" {
 				return output.NewCLIError(output.ErrValidation, "abstraction is required")
+			}
+			if _, ok := allowedAbstractions[abstraction]; !ok {
+				return output.NewCLIError(output.ErrValidation, "unsupported abstraction value").
+					WithDetails("value", abstraction).
+					WithDetails("allowed", []string{"unifiedAccount", "portfolioMargin", "disabled"})
 			}
 
 			exec, err := buildMasterExecutor(cfg)
