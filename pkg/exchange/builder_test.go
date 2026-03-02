@@ -1,6 +1,9 @@
 package exchange
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestBuildOrderAction_LimitOrder(t *testing.T) {
 	params := []OrderParams{{
@@ -236,5 +239,124 @@ func TestBuildScheduleCancelAction_Clear(t *testing.T) {
 	}
 	if action.Time != nil {
 		t.Errorf("Time = %d, want nil", *action.Time)
+	}
+}
+
+func TestBuildUSDClassTransferAction(t *testing.T) {
+	action := BuildUSDClassTransferAction("250.5", true, 1700000000000)
+
+	if action.Type != "usdClassTransfer" {
+		t.Errorf("Type = %q, want usdClassTransfer", action.Type)
+	}
+	if action.Amount != "250.5" {
+		t.Errorf("Amount = %q, want 250.5", action.Amount)
+	}
+	if !action.ToPerp {
+		t.Error("ToPerp = false, want true")
+	}
+	if action.Nonce != 1700000000000 {
+		t.Errorf("Nonce = %d, want 1700000000000", action.Nonce)
+	}
+}
+
+func TestBuildWithdraw3Action(t *testing.T) {
+	action := BuildWithdraw3Action("0x1234567890abcdef1234567890abcdef12345678", "12.34", 1700000000001)
+
+	if action.Type != "withdraw3" {
+		t.Errorf("Type = %q, want withdraw3", action.Type)
+	}
+	if action.Destination != "0x1234567890abcdef1234567890abcdef12345678" {
+		t.Errorf("Destination = %q", action.Destination)
+	}
+	if action.Amount != "12.34" {
+		t.Errorf("Amount = %q, want 12.34", action.Amount)
+	}
+	if action.Time != 1700000000001 {
+		t.Errorf("Time = %d, want 1700000000001", action.Time)
+	}
+}
+
+func TestBuildClassTransferAction(t *testing.T) {
+	action := BuildClassTransferAction("1.5", false, 1700000000002)
+
+	if action.Type != "classTransfer" {
+		t.Errorf("Type = %q, want classTransfer", action.Type)
+	}
+	if action.Amount != "1.5" {
+		t.Errorf("Amount = %q, want 1.5", action.Amount)
+	}
+	if action.ToPerp {
+		t.Error("ToPerp = true, want false")
+	}
+	if action.Nonce != 1700000000002 {
+		t.Errorf("Nonce = %d, want 1700000000002", action.Nonce)
+	}
+}
+
+func TestBuildSpotSendAction(t *testing.T) {
+	action := BuildSpotSendAction("0xabc", "PURR:0x1", "3.14", 1700000000003)
+
+	if action.Type != "spotSend" {
+		t.Errorf("Type = %q, want spotSend", action.Type)
+	}
+	if action.Destination != "0xabc" {
+		t.Errorf("Destination = %q, want 0xabc", action.Destination)
+	}
+	if action.Token != "PURR:0x1" {
+		t.Errorf("Token = %q, want PURR:0x1", action.Token)
+	}
+	if action.Amount != "3.14" {
+		t.Errorf("Amount = %q, want 3.14", action.Amount)
+	}
+	if action.Time != 1700000000003 {
+		t.Errorf("Time = %d, want 1700000000003", action.Time)
+	}
+}
+
+func TestBuildApproveAgentAction(t *testing.T) {
+	action := BuildApproveAgentAction("0xagent", "", 1700000000004)
+
+	if action.Type != "approveAgent" {
+		t.Errorf("Type = %q, want approveAgent", action.Type)
+	}
+	if action.AgentAddress != "0xagent" {
+		t.Errorf("AgentAddress = %q, want 0xagent", action.AgentAddress)
+	}
+	if action.Nonce != 1700000000004 {
+		t.Errorf("Nonce = %d, want 1700000000004", action.Nonce)
+	}
+}
+
+func TestBuildUserSetAbstractionAction(t *testing.T) {
+	action := BuildUserSetAbstractionAction("0xuser", "none", 1700000000005)
+
+	if action.Type != "userSetAbstraction" {
+		t.Errorf("Type = %q, want userSetAbstraction", action.Type)
+	}
+	if action.User != "0xuser" {
+		t.Errorf("User = %q, want 0xuser", action.User)
+	}
+	if action.Abstraction != "none" {
+		t.Errorf("Abstraction = %q, want none", action.Abstraction)
+	}
+	if action.Nonce != 1700000000005 {
+		t.Errorf("Nonce = %d, want 1700000000005", action.Nonce)
+	}
+}
+
+func TestBuildApproveAgentAction_JSONOmitEmptyName(t *testing.T) {
+	action := BuildApproveAgentAction("0xagent", "", 1700000000006)
+	raw, err := json.Marshal(action)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if _, ok := payload["agentName"]; ok {
+		t.Fatal("agentName should be omitted when empty")
 	}
 }

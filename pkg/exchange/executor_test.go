@@ -787,3 +787,235 @@ func TestExecutor_ScheduleCancel_Clear_DryRun(t *testing.T) {
 		t.Errorf("Time = %v, want nil", action.Time)
 	}
 }
+
+func TestExecutor_USDClassTransfer_DryRun(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), nil, false)
+
+	raw, err := exec.USDClassTransfer(context.Background(), USDClassTransferInput{
+		Amount: decimal.NewFromFloat(12.34),
+		ToPerp: true,
+		DryRun: true,
+	})
+	if err != nil {
+		t.Fatalf("USDClassTransfer dry-run error: %v", err)
+	}
+
+	var action map[string]any
+	if err := json.Unmarshal(raw, &action); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if action["type"] != "usdClassTransfer" {
+		t.Errorf("type = %v, want usdClassTransfer", action["type"])
+	}
+	if action["amount"] != "12.34" {
+		t.Errorf("amount = %v, want 12.34", action["amount"])
+	}
+	if action["toPerp"] != true {
+		t.Errorf("toPerp = %v, want true", action["toPerp"])
+	}
+	if action["hyperliquidChain"] != "Testnet" {
+		t.Errorf("hyperliquidChain = %v, want Testnet", action["hyperliquidChain"])
+	}
+	if action["signatureChainId"] != "0x66eee" {
+		t.Errorf("signatureChainId = %v, want 0x66eee", action["signatureChainId"])
+	}
+}
+
+func TestExecutor_ClassTransfer_DryRunUsesUSDClassTransferAction(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), nil, false)
+
+	raw, err := exec.ClassTransfer(context.Background(), ClassTransferInput{
+		Amount: decimal.NewFromFloat(1.5),
+		ToPerp: false,
+		DryRun: true,
+	})
+	if err != nil {
+		t.Fatalf("ClassTransfer dry-run error: %v", err)
+	}
+
+	var action map[string]any
+	if err := json.Unmarshal(raw, &action); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if action["type"] != "usdClassTransfer" {
+		t.Errorf("type = %v, want usdClassTransfer", action["type"])
+	}
+	if action["toPerp"] != false {
+		t.Errorf("toPerp = %v, want false", action["toPerp"])
+	}
+}
+
+func TestExecutor_Withdraw3_InvalidDestination(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+	exec := NewExecutor(s, client.NewClient("http://unused"), nil, false)
+
+	_, err = exec.Withdraw3(context.Background(), Withdraw3Input{
+		Destination: "not-an-address",
+		Amount:      decimal.NewFromInt(1),
+		DryRun:      true,
+	})
+	if err == nil {
+		t.Fatal("expected validation error for invalid destination")
+	}
+}
+
+func TestExecutor_ApproveAgent_InvalidAddress(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+	exec := NewExecutor(s, client.NewClient("http://unused"), nil, false)
+
+	_, err = exec.ApproveAgent(context.Background(), ApproveAgentInput{
+		AgentAddress: "bad",
+		DryRun:       true,
+	})
+	if err == nil {
+		t.Fatal("expected validation error for invalid agent address")
+	}
+}
+
+func TestExecutor_ApproveAgent_RevokeDryRunOmitsAgentName(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+	exec := NewExecutor(s, client.NewClient("http://unused"), nil, false)
+
+	raw, err := exec.ApproveAgent(context.Background(), ApproveAgentInput{
+		AgentAddress: "0x1111111111111111111111111111111111111111",
+		AgentName:    "",
+		DryRun:       true,
+	})
+	if err != nil {
+		t.Fatalf("ApproveAgent dry-run error: %v", err)
+	}
+
+	var action map[string]any
+	if err := json.Unmarshal(raw, &action); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, exists := action["agentName"]; exists {
+		t.Fatalf("agentName should be omitted on revoke-style payload, got %#v", action["agentName"])
+	}
+}
+
+func TestExecutor_SpotSend_DryRun(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), nil, false)
+
+	raw, err := exec.SpotSend(context.Background(), SpotSendInput{
+		Destination: "0x1111111111111111111111111111111111111111",
+		Token:       "PURR:0x1",
+		Amount:      decimal.NewFromFloat(3.5),
+		DryRun:      true,
+	})
+	if err != nil {
+		t.Fatalf("SpotSend dry-run error: %v", err)
+	}
+
+	var action map[string]any
+	if err := json.Unmarshal(raw, &action); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if action["type"] != "spotSend" {
+		t.Errorf("type = %v, want spotSend", action["type"])
+	}
+	if action["token"] != "PURR:0x1" {
+		t.Errorf("token = %v, want PURR:0x1", action["token"])
+	}
+	if action["amount"] != "3.5" {
+		t.Errorf("amount = %v, want 3.5", action["amount"])
+	}
+}
+
+func TestExecutor_UserSetAbstraction_SendsToExchange(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/exchange" {
+			http.NotFound(w, r)
+			return
+		}
+
+		var req map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+
+		var action map[string]any
+		if err := json.Unmarshal(req["action"], &action); err != nil {
+			t.Fatalf("decode action: %v", err)
+		}
+		if action["type"] != "userSetAbstraction" {
+			t.Errorf("action.type = %v, want userSetAbstraction", action["type"])
+		}
+		if action["hyperliquidChain"] != "Testnet" {
+			t.Errorf("hyperliquidChain = %v, want Testnet", action["hyperliquidChain"])
+		}
+		if action["signatureChainId"] != "0x66eee" {
+			t.Errorf("signatureChainId = %v, want 0x66eee", action["signatureChainId"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":"ok","response":{"type":"default"}}`)
+	}))
+	defer srv.Close()
+
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+	exec := NewExecutor(s, client.NewClient(srv.URL), nil, false)
+
+	resp, err := exec.UserSetAbstraction(context.Background(), UserSetAbstractionInput{
+		User:        "0x1111111111111111111111111111111111111111",
+		Abstraction: "disabled",
+	})
+	if err != nil {
+		t.Fatalf("UserSetAbstraction error: %v", err)
+	}
+	if len(resp) == 0 {
+		t.Fatal("expected non-empty response")
+	}
+}
+
+func TestExecutor_UserSetAbstraction_InvalidValue(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+	exec := NewExecutor(s, client.NewClient("http://unused"), nil, false)
+
+	_, err = exec.UserSetAbstraction(context.Background(), UserSetAbstractionInput{
+		User:        "0x1111111111111111111111111111111111111111",
+		Abstraction: "none",
+		DryRun:      true,
+	})
+	if err == nil {
+		t.Fatal("expected validation error for unsupported abstraction")
+	}
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrValidation {
+		t.Errorf("code = %q, want %q", cliErr.Code, output.ErrValidation)
+	}
+}
