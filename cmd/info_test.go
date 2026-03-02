@@ -28,7 +28,7 @@ func newTestRootWithServer(t *testing.T, _ string) (*bytes.Buffer, *bytes.Buffer
 
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
-	os.WriteFile(cfgPath, []byte("agent_key_env: TEST_HL_KEY\nmetadata_ttl: 300\n"), 0600)
+	os.WriteFile(cfgPath, []byte("agent_key_env: TEST_HL_KEY\nmaster_key_env: TEST_HL_MASTER_KEY\nmetadata_ttl: 300\n"), 0600)
 
 	// Set HOME so resolveCacheDir uses our temp dir.
 	t.Setenv("HOME", dir)
@@ -47,6 +47,7 @@ func newTestRootWithServer(t *testing.T, _ string) (*bytes.Buffer, *bytes.Buffer
 
 	// Set a well-known test key for address resolution.
 	t.Setenv("TEST_HL_KEY", "0x0123456789012345678901234567890123456789012345678901234567890123")
+	t.Setenv("TEST_HL_MASTER_KEY", "0x0123456789012345678901234567890123456789012345678901234567890123")
 
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)

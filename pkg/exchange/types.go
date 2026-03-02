@@ -99,3 +99,52 @@ type ScheduleCancelAction struct {
 	Type string `msgpack:"type" json:"type"`
 	Time *int64 `msgpack:"time,omitempty" json:"time,omitempty"`
 }
+
+// USDClassTransferAction transfers USDC between spot and perp classes.
+type USDClassTransferAction struct {
+	Type   string `msgpack:"type" json:"type"`
+	Amount string `msgpack:"amount" json:"amount"`
+	ToPerp bool   `msgpack:"toPerp" json:"toPerp"`
+	Nonce  int64  `msgpack:"nonce" json:"nonce"`
+}
+
+// Withdraw3Action withdraws USDC from Hyperliquid to an Arbitrum address.
+type Withdraw3Action struct {
+	Type        string `msgpack:"type" json:"type"`
+	Destination string `msgpack:"destination" json:"destination"`
+	Amount      string `msgpack:"amount" json:"amount"`
+	Time        int64  `msgpack:"time" json:"time"`
+}
+
+// ClassTransferAction performs class transfer using the classTransfer action type.
+type ClassTransferAction struct {
+	Type   string `msgpack:"type" json:"type"`
+	Amount string `msgpack:"amount" json:"amount"`
+	ToPerp bool   `msgpack:"toPerp" json:"toPerp"`
+	Nonce  int64  `msgpack:"nonce" json:"nonce"`
+}
+
+// SpotSendAction sends a spot token to another address.
+type SpotSendAction struct {
+	Type        string `msgpack:"type" json:"type"`
+	Destination string `msgpack:"destination" json:"destination"`
+	Token       string `msgpack:"token" json:"token"`
+	Amount      string `msgpack:"amount" json:"amount"`
+	Time        int64  `msgpack:"time" json:"time"`
+}
+
+// ApproveAgentAction approves an agent wallet for trading on behalf of the master wallet.
+type ApproveAgentAction struct {
+	Type         string `msgpack:"type" json:"type"`
+	AgentAddress string `msgpack:"agentAddress" json:"agentAddress"`
+	AgentName    string `msgpack:"agentName,omitempty" json:"agentName,omitempty"`
+	Nonce        int64  `msgpack:"nonce" json:"nonce"`
+}
+
+// UserSetAbstractionAction sets account abstraction behavior for a user address.
+type UserSetAbstractionAction struct {
+	Type        string `msgpack:"type" json:"type"`
+	User        string `msgpack:"user" json:"user"`
+	Abstraction string `msgpack:"abstraction" json:"abstraction"`
+	Nonce       int64  `msgpack:"nonce" json:"nonce"`
+}

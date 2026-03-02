@@ -116,3 +116,64 @@ func BuildScheduleCancelAction(cancelTime *int64) *ScheduleCancelAction {
 		Time: cancelTime,
 	}
 }
+
+// BuildUSDClassTransferAction constructs a usdClassTransfer user-signed action.
+func BuildUSDClassTransferAction(amount string, toPerp bool, nonce int64) *USDClassTransferAction {
+	return &USDClassTransferAction{
+		Type:   "usdClassTransfer",
+		Amount: amount,
+		ToPerp: toPerp,
+		Nonce:  nonce,
+	}
+}
+
+// BuildWithdraw3Action constructs a withdraw3 user-signed action.
+func BuildWithdraw3Action(destination, amount string, time int64) *Withdraw3Action {
+	return &Withdraw3Action{
+		Type:        "withdraw3",
+		Destination: destination,
+		Amount:      amount,
+		Time:        time,
+	}
+}
+
+// BuildClassTransferAction constructs a classTransfer user-signed action.
+func BuildClassTransferAction(amount string, toPerp bool, nonce int64) *ClassTransferAction {
+	return &ClassTransferAction{
+		Type:   "classTransfer",
+		Amount: amount,
+		ToPerp: toPerp,
+		Nonce:  nonce,
+	}
+}
+
+// BuildSpotSendAction constructs a spotSend user-signed action.
+func BuildSpotSendAction(destination, token, amount string, time int64) *SpotSendAction {
+	return &SpotSendAction{
+		Type:        "spotSend",
+		Destination: destination,
+		Token:       token,
+		Amount:      amount,
+		Time:        time,
+	}
+}
+
+// BuildApproveAgentAction constructs an approveAgent user-signed action.
+func BuildApproveAgentAction(agentAddress, agentName string, nonce int64) *ApproveAgentAction {
+	return &ApproveAgentAction{
+		Type:         "approveAgent",
+		AgentAddress: agentAddress,
+		AgentName:    agentName,
+		Nonce:        nonce,
+	}
+}
+
+// BuildUserSetAbstractionAction constructs a userSetAbstraction user-signed action.
+func BuildUserSetAbstractionAction(user, abstraction string, nonce int64) *UserSetAbstractionAction {
+	return &UserSetAbstractionAction{
+		Type:        "userSetAbstraction",
+		User:        user,
+		Abstraction: abstraction,
+		Nonce:       nonce,
+	}
+}
