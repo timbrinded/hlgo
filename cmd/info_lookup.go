@@ -126,10 +126,11 @@ and optional HIP-3 dex scopes. Returns canonical --coin values and asset IDs.`,
 			query := strings.TrimSpace(args[0])
 			allDexes, _ := cmd.Flags().GetBool("all-dexes") //nolint:errcheck // known flag
 			limit, _ := cmd.Flags().GetInt("limit")         //nolint:errcheck // known flag
+			dexExplicit := cmd.Flags().Changed("dex")
 
 			dex := strings.ToLower(strings.TrimSpace(cfg.Dex))
 
-			if dex != "" && allDexes {
+			if dexExplicit && allDexes {
 				return output.NewCLIError(output.ErrValidation, "--dex and --all-dexes are mutually exclusive")
 			}
 			if limit <= 0 {
