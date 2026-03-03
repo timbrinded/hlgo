@@ -2,9 +2,9 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -12,7 +12,7 @@ import (
 )
 
 func TestNewRootCommand_DoesNotPanic(t *testing.T) {
-	cmd := NewRootCommand("test")
+	cmd := NewRootCommand(BuildInfo{Version: "test"})
 	if cmd == nil {
 		t.Fatal("NewRootCommand returned nil")
 	}
@@ -22,7 +22,11 @@ func TestNewRootCommand_DoesNotPanic(t *testing.T) {
 }
 
 func TestVersionCommand_OutputsVersion(t *testing.T) {
-	const want = "1.2.3"
+	want := BuildInfo{
+		Version: "1.2.3",
+		Commit:  "abc1234",
+		Date:    "2026-02-25T08:00:00Z",
+	}
 
 	root := NewRootCommand(want)
 	buf := new(bytes.Buffer)
@@ -33,14 +37,17 @@ func TestVersionCommand_OutputsVersion(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	got := strings.TrimSpace(buf.String())
+	var got BuildInfo
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("version output is not valid JSON: %v", err)
+	}
 	if got != want {
-		t.Errorf("version output = %q, want %q", got, want)
+		t.Errorf("version output = %+v, want %+v", got, want)
 	}
 }
 
 func TestSubcommands_Registered(t *testing.T) {
-	root := NewRootCommand("dev")
+	root := NewRootCommand(BuildInfo{Version: "dev"})
 
 	want := []string{"version", "info", "order", "position", "agent", "account", "config"}
 	cmds := make(map[string]bool)
@@ -56,7 +63,7 @@ func TestSubcommands_Registered(t *testing.T) {
 }
 
 func TestGlobalFlags_Registered(t *testing.T) {
-	root := NewRootCommand("dev")
+	root := NewRootCommand(BuildInfo{Version: "dev"})
 
 	flags := []struct {
 		name string
@@ -90,7 +97,7 @@ func TestConfigLoading_InjectsContext(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 	var gotCfg *config.Config
 	root.AddCommand(&cobra.Command{
 		Use: "test-ctx",
@@ -114,7 +121,7 @@ func TestConfigLoading_InjectsContext(t *testing.T) {
 }
 
 func TestConfigLoading_SkippedForVersion(t *testing.T) {
-	root := NewRootCommand("1.0.0")
+	root := NewRootCommand(BuildInfo{Version: "1.0.0"})
 	buf := new(bytes.Buffer)
 	root.SetOut(buf)
 	root.SetArgs([]string{"version"})
@@ -129,7 +136,7 @@ func TestConfigLoading_SkippedForHelp(t *testing.T) {
 	cfgPath := filepath.Join(dir, "config.yaml")
 	os.WriteFile(cfgPath, []byte(":\x00bad"), 0600)
 
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 	root.SetOut(new(bytes.Buffer))
 	root.SetArgs([]string{"help", "--config", cfgPath})
 

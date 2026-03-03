@@ -16,7 +16,7 @@ func TestConfigInit_CreatesFile(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
 
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 	buf := new(bytes.Buffer)
 	root.SetOut(buf)
 	root.SetArgs([]string{"config", "init", "--config", cfgPath})
@@ -49,7 +49,7 @@ func TestConfigInit_NoOverwrite(t *testing.T) {
 	cfgPath := filepath.Join(dir, "config.yaml")
 	os.WriteFile(cfgPath, []byte("existing"), 0600)
 
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 	root.SetArgs([]string{"config", "init", "--config", cfgPath})
 
 	err := root.Execute()
@@ -63,7 +63,7 @@ func TestConfigInit_Force(t *testing.T) {
 	cfgPath := filepath.Join(dir, "config.yaml")
 	os.WriteFile(cfgPath, []byte("old"), 0600)
 
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 	buf := new(bytes.Buffer)
 	root.SetOut(buf)
 	root.SetArgs([]string{"config", "init", "--config", cfgPath, "--force"})
@@ -82,7 +82,7 @@ func TestConfigInit_CustomValues(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
 
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 	buf := new(bytes.Buffer)
 	root.SetOut(buf)
 	root.SetArgs([]string{
@@ -112,7 +112,7 @@ func TestConfigInit_WarnsOnMissingEnv(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
 
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 	stderr := new(bytes.Buffer)
 	root.SetErr(stderr)
 	root.SetOut(new(bytes.Buffer))
@@ -131,7 +131,7 @@ func TestConfigShow_Output(t *testing.T) {
 	os.WriteFile(cfgPath, []byte("agent_key_env: TEST_KEY\nmetadata_ttl: 120\n"), 0600)
 	t.Setenv("TEST_KEY", "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
 
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 	buf := new(bytes.Buffer)
 	root.SetOut(buf)
 	root.SetArgs([]string{"config", "show", "--config", cfgPath})
@@ -172,7 +172,7 @@ func TestConfigTest_AllGood(t *testing.T) {
 	os.WriteFile(cfgPath, []byte("agent_key_env: TEST_KEY\n"), 0600)
 	t.Setenv("TEST_KEY", "0xdeadbeef")
 
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 	buf := new(bytes.Buffer)
 	root.SetOut(buf)
 	root.SetArgs([]string{"config", "test", "--config", cfgPath})
@@ -208,7 +208,7 @@ func TestConfigTest_NoFileReportsNotReadable(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("TEST_KEY", "0xdeadbeef")
 
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 	buf := new(bytes.Buffer)
 	root.SetOut(buf)
 	root.SetArgs([]string{"config", "test"})
@@ -237,7 +237,7 @@ func TestConfigTest_MissingEnvVar(t *testing.T) {
 	cfgPath := filepath.Join(dir, "config.yaml")
 	os.WriteFile(cfgPath, []byte("agent_key_env: DEFINITELY_NOT_SET_XYZ\n"), 0600)
 
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 	buf := new(bytes.Buffer)
 	root.SetOut(buf)
 	root.SetArgs([]string{"config", "test", "--config", cfgPath})

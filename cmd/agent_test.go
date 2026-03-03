@@ -14,7 +14,7 @@ import (
 )
 
 func TestAgentSubcommands_Registered(t *testing.T) {
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 
 	var agentCmdName string
 	var subcommands []string
