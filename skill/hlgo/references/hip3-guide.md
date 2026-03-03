@@ -15,6 +15,12 @@ UI chart/watchlist symbols are display labels and can differ from order `--coin`
 `hlgo` expects the API market identifier from:
 
 ```bash
+hlgo info lookup <symbol-or-id> --dex <dex> --testnet --format json
+```
+
+Or directly from:
+
+```bash
 hlgo info meta --dex <dex> --testnet --format json | jq -r '.universe[].name'
 ```
 
@@ -25,8 +31,9 @@ Examples:
 hlgo order place --coin tngs:CHARIZARDUSD --side buy --price 517.5 --size 0.01 --testnet --dry-run --format json
 # -> VALIDATION_ERROR unknown coin
 
-# Positive: API market name from meta.universe[] (works)
-hlgo order place --coin tngs:CHARIZARD --side buy --price 517.5 --size 0.01 --testnet --dry-run --format json
+# Positive: API market name from lookup/meta (works)
+hlgo info lookup charizardusd --dex tngs --testnet --format json
+hlgo order place --coin tngs:CHARIZARD-TGUSD --side buy --price 517.5 --size 0.01 --testnet --dry-run --format json
 ```
 
 ## Discovery
@@ -97,4 +104,4 @@ hlgo order place --coin UETH/USDC --side buy --price 3000 --size 0.01 --testnet
 
 ## Commands That Accept `--dex`
 
-`info mids`, `info meta`, `info meta-and-ctxs`, `info state`, `info open-orders`, `order place`, `order market`, `order cancel`, `order cancel-all`, `order modify`, `order batch`, `agent snapshot`, `agent pnl`, `agent bracket`.
+`info lookup`, `info mids`, `info meta`, `info meta-and-ctxs`, `info state`, `info open-orders`, `order place`, `order market`, `order cancel`, `order cancel-all`, `order modify`, `order batch`, `agent snapshot`, `agent pnl`, `agent bracket`.

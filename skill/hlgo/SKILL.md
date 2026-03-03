@@ -60,9 +60,11 @@ Pick the wrong wallet and signing fails silently or with `SIGNING_ERROR`. When i
 
 - **Keep machine workflows on `--format json`.** Agents parse JSON; table/csv formats are for human eyes only.
 - **Use decimal-safe strings for all prices, sizes, and amounts.** hlgo uses `shopspring/decimal` internally — never pass floats.
-- **For HIP-3, use API coin names from `info meta --dex <dex>` `universe[].name` (not UI tickers).**
-  - Negative example: `--coin tngs:CHARIZARDUSD` -> `VALIDATION_ERROR unknown coin`
-  - Positive example: `--coin tngs:CHARIZARD` -> resolves and places correctly
+- **For HIP-3, use API coin names from `info lookup`/`info meta` (not UI tickers).**
+  - Negative example: `hlgo order place --coin tngs:CHARIZARDUSD ...` -> `VALIDATION_ERROR unknown coin`
+  - Positive example:
+    - `hlgo info lookup charizardusd --dex tngs --testnet --format json`
+    - Use returned `matches[].coin` (for example `tngs:CHARIZARD-TGUSD`) in `order` commands.
 - **Treat non-zero exit codes as failures; branch on JSON `code`.** Exit codes map to error categories (1=validation, 3=network, 6=rate-limit). The `code` field in stderr JSON is the stable contract.
 - **Keep `--testnet` enabled during development and simulation.** Testnet is free. Mainnet costs real money. No flag = mainnet.
 - **Never output private key material.** hlgo redacts keys in `config show`. Your scripts must too.

@@ -15,6 +15,7 @@ are read-only and require no wallet configuration.`,
 	}
 
 	cmd.AddCommand(
+		newInfoLookupCmd(),
 		newInfoMidsCmd(),
 		newInfoMetaCmd(),
 		newInfoMetaAndCtxsCmd(),

@@ -55,6 +55,7 @@ hlgo info mids --testnet --format json
 
 | Command | Purpose | Key Flags | Example |
 |---|---|---|---|
+| `hlgo info lookup <query>` | Resolve coin identifiers by name fragment or numeric asset ID across perp/spot/HIP-3 | `--all-dexes`, `--limit`, global `--dex` | `hlgo info lookup charizardusd --dex tngs --testnet --format json` |
 | `hlgo info mids` | Fetch all mid prices | `--dex` | `hlgo info mids --testnet --format json` |
 | `hlgo info meta` | Fetch perp or spot metadata | `--spot`, `--dex` | `hlgo info meta --spot --testnet --format json` |
 | `hlgo info meta-and-ctxs` | Fetch metadata plus asset contexts | `--spot`, `--dex` | `hlgo info meta-and-ctxs --testnet --format json` |

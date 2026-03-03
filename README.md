@@ -191,6 +191,15 @@ Resolver supports:
 - HIP-3 perps with dex prefix: `dex:COIN` (example `xyz:XYZ100`)
 - Numeric asset IDs (passthrough)
 
+When symbol formats are unclear, use lookup first:
+
+```bash
+hlgo info lookup charizardusd --dex tngs --testnet
+hlgo info lookup 110000 --testnet
+```
+
+`info lookup` returns canonical `coin` values to use with trading commands and the matching `asset_id`.
+
 Important market-order note:
 - `order market` needs mids lookup, so use named symbols (not numeric asset IDs).
 - Spot aliases are internally mapped to canonical pair symbols before mids lookup.
