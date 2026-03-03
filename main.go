@@ -15,7 +15,8 @@ var (
 )
 
 func main() {
-	if err := cmd.NewRootCommand(version, commit, date).Execute(); err != nil {
+	info := cmd.BuildInfo{Version: version, Commit: commit, Date: date}
+	if err := cmd.NewRootCommand(info).Execute(); err != nil {
 		os.Exit(output.WriteError(os.Stderr, err))
 	}
 }

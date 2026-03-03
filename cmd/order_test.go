@@ -219,7 +219,7 @@ func TestOrderCancel_NeitherOidNorCloid(t *testing.T) {
 }
 
 func TestOrderSubcommands_AllRegistered(t *testing.T) {
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 	var orderCmd *cobra.Command
 	for _, c := range root.Commands() {
 		if c.Use == "order" {

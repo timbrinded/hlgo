@@ -10,16 +10,7 @@ import (
 
 // NewRootCommand constructs the root hlgo command with all subcommands registered.
 // Build metadata is injected at build time via ldflags — no global mutable state.
-// commit/date are optional for backward compatibility with existing tests.
-func NewRootCommand(version string, buildMetadata ...string) *cobra.Command {
-	commit, date := "none", "unknown"
-	if len(buildMetadata) > 0 {
-		commit = buildMetadata[0]
-	}
-	if len(buildMetadata) > 1 {
-		date = buildMetadata[1]
-	}
-
+func NewRootCommand(info BuildInfo) *cobra.Command {
 	v := viper.New()
 
 	root := &cobra.Command{
@@ -53,7 +44,7 @@ Errors are returned as structured JSON to stderr with machine-readable codes.`,
 	bindEnvVars(v, root)
 
 	root.AddCommand(
-		newVersionCmd(version, commit, date),
+		newVersionCmd(info),
 		newInfoCmd(),
 		newOrderCmd(),
 		newPositionCmd(),

@@ -55,7 +55,7 @@ func newTestRootWithServer(t *testing.T, _ string) (*bytes.Buffer, *bytes.Buffer
 	run := func(args ...string) error {
 		stdout.Reset()
 		stderr.Reset()
-		root := NewRootCommand("test")
+		root := NewRootCommand(BuildInfo{Version: "test"})
 		root.SetOut(stdout)
 		root.SetErr(stderr)
 		fullArgs := append([]string{"--config", cfgPath}, args...)
@@ -390,7 +390,7 @@ func TestInfoRateLimit_DryRun(t *testing.T) {
 }
 
 func TestInfoSubcommands_AllRegistered(t *testing.T) {
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 	var infoCmd *cobra.Command
 	for _, c := range root.Commands() {
 		if c.Use == "info" {

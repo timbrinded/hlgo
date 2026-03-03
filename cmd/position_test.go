@@ -150,7 +150,7 @@ func TestPositionMargin_InvalidSide(t *testing.T) {
 }
 
 func TestPositionSubcommands_AllRegistered(t *testing.T) {
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 	var posCmd *cobra.Command
 	for _, c := range root.Commands() {
 		if c.Use == "position" {

@@ -12,7 +12,7 @@ import (
 )
 
 func TestNewRootCommand_DoesNotPanic(t *testing.T) {
-	cmd := NewRootCommand("test")
+	cmd := NewRootCommand(BuildInfo{Version: "test"})
 	if cmd == nil {
 		t.Fatal("NewRootCommand returned nil")
 	}
@@ -22,13 +22,13 @@ func TestNewRootCommand_DoesNotPanic(t *testing.T) {
 }
 
 func TestVersionCommand_OutputsVersion(t *testing.T) {
-	const (
-		wantVersion = "1.2.3"
-		wantCommit  = "abc1234"
-		wantDate    = "2026-02-25T08:00:00Z"
-	)
+	want := BuildInfo{
+		Version: "1.2.3",
+		Commit:  "abc1234",
+		Date:    "2026-02-25T08:00:00Z",
+	}
 
-	root := NewRootCommand(wantVersion, wantCommit, wantDate)
+	root := NewRootCommand(want)
 	buf := new(bytes.Buffer)
 	root.SetOut(buf)
 	root.SetArgs([]string{"version"})
@@ -37,21 +37,17 @@ func TestVersionCommand_OutputsVersion(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var got struct {
-		Version string `json:"version"`
-		Commit  string `json:"commit"`
-		Date    string `json:"date"`
-	}
+	var got BuildInfo
 	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
 		t.Fatalf("version output is not valid JSON: %v", err)
 	}
-	if got.Version != wantVersion || got.Commit != wantCommit || got.Date != wantDate {
-		t.Errorf("version output = %+v, want version=%q commit=%q date=%q", got, wantVersion, wantCommit, wantDate)
+	if got != want {
+		t.Errorf("version output = %+v, want %+v", got, want)
 	}
 }
 
 func TestSubcommands_Registered(t *testing.T) {
-	root := NewRootCommand("dev")
+	root := NewRootCommand(BuildInfo{Version: "dev"})
 
 	want := []string{"version", "info", "order", "position", "agent", "account", "config"}
 	cmds := make(map[string]bool)
@@ -67,7 +63,7 @@ func TestSubcommands_Registered(t *testing.T) {
 }
 
 func TestGlobalFlags_Registered(t *testing.T) {
-	root := NewRootCommand("dev")
+	root := NewRootCommand(BuildInfo{Version: "dev"})
 
 	flags := []struct {
 		name string
@@ -101,7 +97,7 @@ func TestConfigLoading_InjectsContext(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 	var gotCfg *config.Config
 	root.AddCommand(&cobra.Command{
 		Use: "test-ctx",
@@ -125,7 +121,7 @@ func TestConfigLoading_InjectsContext(t *testing.T) {
 }
 
 func TestConfigLoading_SkippedForVersion(t *testing.T) {
-	root := NewRootCommand("1.0.0")
+	root := NewRootCommand(BuildInfo{Version: "1.0.0"})
 	buf := new(bytes.Buffer)
 	root.SetOut(buf)
 	root.SetArgs([]string{"version"})
@@ -140,7 +136,7 @@ func TestConfigLoading_SkippedForHelp(t *testing.T) {
 	cfgPath := filepath.Join(dir, "config.yaml")
 	os.WriteFile(cfgPath, []byte(":\x00bad"), 0600)
 
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 	root.SetOut(new(bytes.Buffer))
 	root.SetArgs([]string{"help", "--config", cfgPath})
 

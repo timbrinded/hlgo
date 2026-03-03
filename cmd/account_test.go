@@ -13,7 +13,7 @@ import (
 )
 
 func TestAccountSubcommands_AllRegistered(t *testing.T) {
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 	var accountCmd *cobra.Command
 	for _, c := range root.Commands() {
 		if c.Use == "account" {
@@ -251,7 +251,7 @@ func TestAccountMissingMasterKey_ConfigError(t *testing.T) {
 	}
 	t.Setenv("TEST_HL_KEY", "0x0123456789012345678901234567890123456789012345678901234567890123")
 
-	root := NewRootCommand("test")
+	root := NewRootCommand(BuildInfo{Version: "test"})
 	root.SetOut(new(bytes.Buffer))
 	root.SetErr(new(bytes.Buffer))
 	root.SetArgs([]string{
