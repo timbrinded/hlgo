@@ -9,6 +9,26 @@ Load this when a task involves `--dex`, `dex:COIN` format, or non-standard perps
 - **HIP-3 perps:** `{dex}:{COIN}` format — `xyz:XYZ100`, `trove:AAPL`.
 - Case-insensitive. The resolver normalizes internally.
 
+### UI Symbol vs API Coin Name (Important)
+
+UI chart/watchlist symbols are display labels and can differ from order `--coin`.
+`hlgo` expects the API market identifier from:
+
+```bash
+hlgo info meta --dex <dex> --testnet --format json | jq -r '.universe[].name'
+```
+
+Examples:
+
+```bash
+# Negative: UI-style ticker (fails)
+hlgo order place --coin tngs:CHARIZARDUSD --side buy --price 517.5 --size 0.01 --testnet --dry-run --format json
+# -> VALIDATION_ERROR unknown coin
+
+# Positive: API market name from meta.universe[] (works)
+hlgo order place --coin tngs:CHARIZARD --side buy --price 517.5 --size 0.01 --testnet --dry-run --format json
+```
+
 ## Discovery
 
 List all available HIP-3 dexes and their coins:
