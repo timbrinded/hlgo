@@ -47,7 +47,7 @@ hlgo info mids --testnet --format json
 
 | Command | Purpose | Key Flags | Example |
 |---|---|---|---|
-| `hlgo config init` | Create config file | `--private-key-env`, `--private-key-env`, `--default-dex`, `--metadata-ttl`, `--force` | `hlgo config init --private-key-env HL_PRIVATE_KEY --private-key-env HL_PRIVATE_KEY` |
+| `hlgo config init` | Create config file | `--private-key-env`, `--default-dex`, `--metadata-ttl`, `--force` | `hlgo config init --private-key-env HL_PRIVATE_KEY` |
 | `hlgo config show` | Show resolved config with key redaction | `--config`, `--testnet`, `--format` | `hlgo config show --testnet` |
 | `hlgo config test` | Validate config readability, key envs, and API connectivity | `--config`, `--testnet` | `hlgo config test --testnet` |
 

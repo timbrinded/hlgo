@@ -15,7 +15,7 @@
 
 1. **JSON-first output.** Every command returns valid JSON to stdout by default. Human-readable table format via `--format table`. Errors return JSON to stderr with a consistent schema: `{"error": "<message>", "code": "<type>"}`.
 2. **Stateless per invocation.** No daemon, no long-running process. Read config, execute, return, exit. The agent controls the loop.
-3. **Dual wallet architecture.** Agent wallet (limited permissions) for all trading. Master wallet for transfers, withdrawals, and agent approval. Config specifies both; commands auto-select the correct signer.
+3. **Single key model.** One configured private key for all signing. L1 actions support optional `--on-behalf-of` for delegated account context. Commands auto-select the correct signing path based on action type.
 4. **Decimal-everywhere.** All prices, sizes, and financial values use `shopspring/decimal` internally and string representations in JSON. Never `float64`.
 5. **Fail loud.** Non-zero exit codes on any error. The agent must be able to distinguish success from failure programmatically.
 6. **Testnet-first development.** `--testnet` flag (or `HL_TESTNET=true`) switches all endpoints. Default is mainnet.
@@ -53,7 +53,7 @@ Two distinct signing paths, both using EIP-712 typed data:
 - Chain ID: `1337`
 - Domain name: `"Exchange"`
 - Flow: serialize action → msgpack encode → keccak256 hash → construct phantom agent `{source, connectionId}` → EIP-712 sign the phantom agent
-- **Agent wallet CAN sign these** (this is the primary path for the agent)
+- **Used by order, position, and agent bracket commands**
 
 **User-Signed Actions** — used for transfers, withdrawals, agent management:
 
@@ -272,7 +272,7 @@ Update isolated margin.
 #### `hlgo order schedule-cancel`
 Dead man’s switch.
 
-### 4.3 Account Commands (Signed, Master Wallet)
+### 4.3 Account Commands (Signed, User Path)
 
 - `hlgo account transfer`
 - `hlgo account withdraw`
@@ -420,7 +420,7 @@ go install .
 ## 11. Security Considerations
 
 1. Never log private keys.
-2. Agent wallet isolated to L1 trading actions.
+2. Signing path auto-selected by action type (L1 for trading, user-signed for account operations).
 3. Dangerous operations gated with explicit confirmation and dry-run support.
 4. No key material in output.
 5. Testnet-first workflow for development.

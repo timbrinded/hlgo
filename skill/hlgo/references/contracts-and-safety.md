@@ -26,8 +26,8 @@
 
 | Command Group | Wallet | Path |
 |---|---|---|
-| `order`, `position`, `agent bracket` | Agent wallet (`private_key_env`) | L1 phantom-agent path |
-| `account` commands | Master wallet (`private_key_env`) | User-signed path |
+| `order`, `position`, `agent bracket` | Configured key (`private_key_env`) | L1 phantom-agent path |
+| `account` commands | Configured key (`private_key_env`) | User-signed path |
 | `info`, `agent snapshot`, `agent pnl`, `config`, `version` | No signing | Read/config path |
 
 ## Precision and Serialization Rules

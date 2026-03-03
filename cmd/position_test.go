@@ -66,7 +66,7 @@ func TestPositionLeverage_ModeCaseInsensitive(t *testing.T) {
 	}
 }
 
-func TestPositionLeverage_InvalidVault(t *testing.T) {
+func TestPositionLeverage_InvalidOnBehalfOf(t *testing.T) {
 	_, _, run := newTestRootWithServer(t, "")
 
 	err := run("position", "leverage",
@@ -117,7 +117,7 @@ func TestPositionMargin_DryRun(t *testing.T) {
 	}
 }
 
-func TestPositionMargin_InvalidVault(t *testing.T) {
+func TestPositionMargin_InvalidOnBehalfOf(t *testing.T) {
 	_, _, run := newTestRootWithServer(t, "")
 
 	err := run("position", "margin",

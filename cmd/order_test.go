@@ -308,7 +308,7 @@ func TestOrderModify_DryRun_PriceOnly(t *testing.T) {
 	}
 }
 
-func TestOrderModify_InvalidVault(t *testing.T) {
+func TestOrderModify_InvalidOnBehalfOf(t *testing.T) {
 	_, _, run := newTestRootWithServer(t, "")
 
 	err := run("order", "modify",
