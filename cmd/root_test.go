@@ -2,9 +2,9 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -22,9 +22,13 @@ func TestNewRootCommand_DoesNotPanic(t *testing.T) {
 }
 
 func TestVersionCommand_OutputsVersion(t *testing.T) {
-	const want = "1.2.3"
+	const (
+		wantVersion = "1.2.3"
+		wantCommit  = "abc1234"
+		wantDate    = "2026-02-25T08:00:00Z"
+	)
 
-	root := NewRootCommand(want)
+	root := NewRootCommand(wantVersion, wantCommit, wantDate)
 	buf := new(bytes.Buffer)
 	root.SetOut(buf)
 	root.SetArgs([]string{"version"})
@@ -33,9 +37,16 @@ func TestVersionCommand_OutputsVersion(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	got := strings.TrimSpace(buf.String())
-	if got != want {
-		t.Errorf("version output = %q, want %q", got, want)
+	var got struct {
+		Version string `json:"version"`
+		Commit  string `json:"commit"`
+		Date    string `json:"date"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("version output is not valid JSON: %v", err)
+	}
+	if got.Version != wantVersion || got.Commit != wantCommit || got.Date != wantDate {
+		t.Errorf("version output = %+v, want version=%q commit=%q date=%q", got, wantVersion, wantCommit, wantDate)
 	}
 }
 

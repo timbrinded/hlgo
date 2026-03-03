@@ -7,13 +7,15 @@ import (
 	"github.com/timbrinded/hlgo/pkg/output"
 )
 
-// version is set at build time via:
-//
-//	go build -ldflags "-X main.version=x.y.z"
-var version = "dev"
+var (
+	// Build metadata is injected via ldflags.
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
 
 func main() {
-	if err := cmd.NewRootCommand(version).Execute(); err != nil {
+	if err := cmd.NewRootCommand(version, commit, date).Execute(); err != nil {
 		os.Exit(output.WriteError(os.Stderr, err))
 	}
 }

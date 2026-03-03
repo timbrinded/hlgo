@@ -147,6 +147,12 @@ Note:
 - Default output is JSON on `stdout`.
 - `--format table` and `--format csv` are for human inspection.
 
+`hlgo version` also emits JSON metadata:
+
+```json
+{"version":"v0.1.0","commit":"abc1234","date":"2026-02-25T08:00:00Z"}
+```
+
 ### Error Output
 
 All errors are structured JSON on `stderr`:
@@ -337,10 +343,20 @@ make lint
 make check
 ```
 
+Release instructions:
+- [`RELEASE.md`](./RELEASE.md) documents the end-to-end release process (preflight, snapshot validation, tagging, and verification).
+
 Versioned build:
 
 ```bash
-go build -ldflags "-X main.version=x.y.z" -o hlgo .
+go build -ldflags "-X main.version=x.y.z -X main.commit=$(git rev-parse --short HEAD) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o hlgo .
+```
+
+Release tag flow:
+
+```bash
+git tag -a v0.1.0 -m "Release v0.1.0"
+git push origin v0.1.0
 ```
 
 ## Troubleshooting
@@ -368,3 +384,7 @@ hlgo position --help
 hlgo account --help
 hlgo config --help
 ```
+
+## License
+
+This project is licensed under the MIT License. See [`LICENSE`](./LICENSE).
