@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -176,7 +177,7 @@ func newAgentPnlCmd() *cobra.Command {
 					result.RealizedUnavailable = true
 					result.Errors = append(result.Errors, toAgentStepError("fills", parseErr))
 				} else {
-					realizedPnl, result.Errors = addClosedPnl(fills, result.Errors)
+					realizedPnl, result.Errors = addClosedPnl(fills, result.Errors, cfg.Dex)
 				}
 			}
 
@@ -192,7 +193,7 @@ func newAgentPnlCmd() *cobra.Command {
 					result.FundingUnavailable = true
 					result.Errors = append(result.Errors, toAgentStepError("user-funding", parseErr))
 				} else {
-					fundingByCoin, totalFunding, result.Errors = aggregateFundingByCoin(funding, result.Errors)
+					fundingByCoin, totalFunding, result.Errors = aggregateFundingByCoin(funding, result.Errors, cfg.Dex)
 				}
 			}
 
@@ -291,9 +292,13 @@ func positionPnl(position info.Position, mids info.MidsResult, fundingByCoin map
 	}, nil
 }
 
-func addClosedPnl(fills info.FillsResult, errs []agentStepError) (decimal.Decimal, []agentStepError) {
+func addClosedPnl(fills info.FillsResult, errs []agentStepError, dex string) (decimal.Decimal, []agentStepError) {
 	total := decimal.Zero
 	for _, fill := range fills {
+		if !coinInDexScope(fill.Coin, dex) {
+			continue
+		}
+
 		closedPnl := fill.ClosedPnl
 		if closedPnl == "" {
 			continue
@@ -313,12 +318,15 @@ func addClosedPnl(fills info.FillsResult, errs []agentStepError) (decimal.Decima
 	return total, errs
 }
 
-func aggregateFundingByCoin(funding info.UserFundingResult, errs []agentStepError) (map[string]decimal.Decimal, decimal.Decimal, []agentStepError) {
+func aggregateFundingByCoin(funding info.UserFundingResult, errs []agentStepError, dex string) (map[string]decimal.Decimal, decimal.Decimal, []agentStepError) {
 	byCoin := make(map[string]decimal.Decimal)
 	total := decimal.Zero
 
 	for _, entry := range funding {
 		coin := entry.Delta.Coin
+		if !coinInDexScope(coin, dex) {
+			continue
+		}
 		if coin == "" {
 			coin = "UNKNOWN"
 		}
@@ -341,4 +349,19 @@ func aggregateFundingByCoin(funding info.UserFundingResult, errs []agentStepErro
 	}
 
 	return byCoin, total, errs
+}
+
+func coinInDexScope(coin, dex string) bool {
+	scope := strings.TrimSpace(strings.ToLower(dex))
+	if scope == "" {
+		return true
+	}
+
+	trimmedCoin := strings.TrimSpace(coin)
+	idx := strings.Index(trimmedCoin, ":")
+	if idx <= 0 {
+		return false
+	}
+	coinDex := strings.ToLower(strings.TrimSpace(trimmedCoin[:idx]))
+	return coinDex == scope
 }

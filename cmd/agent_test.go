@@ -336,6 +336,78 @@ func TestAgentPnl_SkipsMidsWhenNoPositions(t *testing.T) {
 	}
 }
 
+func TestAgentPnl_FiltersRealizedAndFundingByDex(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+
+		switch req["type"] {
+		case "clearinghouseState":
+			if req["dex"] != "xyz" {
+				t.Fatalf("clearinghouseState dex = %v, want xyz", req["dex"])
+			}
+			_, _ = w.Write([]byte(`{"assetPositions":[{"type":"oneWay","position":{"coin":"xyz:ETH","szi":"1","entryPx":"100","unrealizedPnl":"0","leverage":{"type":"cross","value":5}}}],"marginSummary":{"accountValue":"100","totalMarginUsed":"0","totalNtlPos":"0","totalRawUsd":"0"},"crossMarginSummary":{"accountValue":"100","totalMarginUsed":"0","totalNtlPos":"0","totalRawUsd":"0"},"crossMaintenanceMarginUsed":"0","withdrawable":"100","time":1700000000000}`))
+		case "allMids":
+			if req["dex"] != "xyz" {
+				t.Fatalf("allMids dex = %v, want xyz", req["dex"])
+			}
+			_, _ = w.Write([]byte(`{"xyz:ETH":"110","BTC":"70000"}`))
+		case "userFillsByTime":
+			_, _ = w.Write([]byte(`[{"coin":"xyz:ETH","closedPnl":"5","oid":1},{"coin":"BTC","closedPnl":"7","oid":2}]`))
+		case "userFunding":
+			_, _ = w.Write([]byte(`[{"delta":{"coin":"xyz:ETH","usdc":"1.5"}},{"delta":{"coin":"BTC","usdc":"2.5"}}]`))
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"unknown type"}`))
+		}
+	}))
+	defer srv.Close()
+
+	t.Setenv("HLGO_API_URL", srv.URL)
+	stdout, _, run := newTestRootWithServer(t, "")
+
+	if err := run("agent", "pnl", "--lookback-hours", "24", "--dex", "xyz"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse output: %v", err)
+	}
+	if result["realized_pnl"] != "5" {
+		t.Fatalf("realized_pnl = %v, want 5", result["realized_pnl"])
+	}
+	if result["total_funding_pnl"] != "1.5" {
+		t.Fatalf("total_funding_pnl = %v, want 1.5", result["total_funding_pnl"])
+	}
+	if result["total_unrealized_pnl"] != "10" {
+		t.Fatalf("total_unrealized_pnl = %v, want 10", result["total_unrealized_pnl"])
+	}
+	if result["total_pnl"] != "16.5" {
+		t.Fatalf("total_pnl = %v, want 16.5", result["total_pnl"])
+	}
+	if result["partial"] != false {
+		t.Fatalf("partial = %v, want false", result["partial"])
+	}
+
+	positions, ok := result["positions"].([]any)
+	if !ok || len(positions) != 1 {
+		t.Fatalf("positions = %T(len=%d), want array len 1", result["positions"], len(positions))
+	}
+	pos, ok := positions[0].(map[string]any)
+	if !ok {
+		t.Fatalf("positions[0] = %T, want object", positions[0])
+	}
+	if pos["coin"] != "xyz:ETH" {
+		t.Fatalf("positions[0].coin = %v, want xyz:ETH", pos["coin"])
+	}
+	if pos["funding_pnl"] != "1.5" {
+		t.Fatalf("positions[0].funding_pnl = %v, want 1.5", pos["funding_pnl"])
+	}
+}
+
 func TestPositionPnl_ComputesSignedUnrealized(t *testing.T) {
 	pos := info.Position{
 		Coin:    "BTC",
@@ -360,7 +432,7 @@ func TestAggregateFundingByCoin(t *testing.T) {
 		{Delta: info.UserFundingDelta{Coin: "BTC", USDC: "0.1"}},
 		{Delta: info.UserFundingDelta{Coin: "ETH", USDC: "0.3"}},
 	}
-	byCoin, total, errs := aggregateFundingByCoin(funding, nil)
+	byCoin, total, errs := aggregateFundingByCoin(funding, nil, "")
 	if len(errs) != 0 {
 		t.Fatalf("expected no errors, got %v", errs)
 	}
@@ -372,5 +444,44 @@ func TestAggregateFundingByCoin(t *testing.T) {
 	}
 	if got := total.String(); got != "0.2" {
 		t.Errorf("total funding = %q, want 0.2", got)
+	}
+}
+
+func TestAddClosedPnl_FiltersByDex(t *testing.T) {
+	fills := info.FillsResult{
+		{Coin: "xyz:ETH", ClosedPnl: "4.2", Oid: 1},
+		{Coin: "BTC", ClosedPnl: "9.9", Oid: 2},
+		{Coin: "xyz:BTC", ClosedPnl: "-1.2", Oid: 3},
+	}
+	total, errs := addClosedPnl(fills, nil, "xyz")
+	if len(errs) != 0 {
+		t.Fatalf("expected no errors, got %v", errs)
+	}
+	if got := total.String(); got != "3" {
+		t.Fatalf("total closed pnl = %q, want 3", got)
+	}
+}
+
+func TestAggregateFundingByCoin_FiltersByDex(t *testing.T) {
+	funding := info.UserFundingResult{
+		{Delta: info.UserFundingDelta{Coin: "xyz:ETH", USDC: "-0.2"}},
+		{Delta: info.UserFundingDelta{Coin: "BTC", USDC: "0.1"}},
+		{Delta: info.UserFundingDelta{Coin: "xyz:BTC", USDC: "0.3"}},
+	}
+	byCoin, total, errs := aggregateFundingByCoin(funding, nil, "xyz")
+	if len(errs) != 0 {
+		t.Fatalf("expected no errors, got %v", errs)
+	}
+	if _, ok := byCoin["BTC"]; ok {
+		t.Fatalf("unexpected BTC funding in dex-scoped result: %#v", byCoin)
+	}
+	if got := byCoin["xyz:ETH"].String(); got != "-0.2" {
+		t.Fatalf("xyz:ETH funding = %q, want -0.2", got)
+	}
+	if got := byCoin["xyz:BTC"].String(); got != "0.3" {
+		t.Fatalf("xyz:BTC funding = %q, want 0.3", got)
+	}
+	if got := total.String(); got != "0.1" {
+		t.Fatalf("total funding = %q, want 0.1", got)
 	}
 }
