@@ -7,17 +7,20 @@ Project principles: [`SOUL.md`](./SOUL.md)
 
 ## Install
 
+```bash
+curl -sSfL https://raw.githubusercontent.com/timbrinded/hlgo/main/install.sh | sh
+```
+
+This installs the latest release to `~/.local/bin`. Override with `HLGO_INSTALL_DIR`:
+
+```bash
+curl -sSfL https://raw.githubusercontent.com/timbrinded/hlgo/main/install.sh | HLGO_INSTALL_DIR=/usr/local/bin sh
+```
+
 From source (requires Go 1.26+):
 
 ```bash
 go install github.com/timbrinded/hlgo@latest
-```
-
-Local dev build:
-
-```bash
-make build        # outputs bin/hlgo
-make install      # installs to $GOPATH/bin
 ```
 
 Or download a prebuilt binary from [Releases](https://github.com/timbrinded/hlgo/releases).
