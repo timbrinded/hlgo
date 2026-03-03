@@ -109,6 +109,8 @@ hlgo info mids --testnet --format json
 | `hlgo account approve-agent` | Approve/revoke agent wallet | Required: `--agent`; Use `--name` to approve or `--revoke --confirm` to revoke | `hlgo account approve-agent --agent 0xabc... --name trader01 --testnet --format json` |
 | `hlgo account set-abstraction` | Set abstraction mode | Required: `--user`, `--abstraction` (`unifiedAccount`, `portfolioMargin`, `disabled`) | `hlgo account set-abstraction --user 0xabc... --abstraction disabled --testnet --format json` |
 
+> **Note:** Account commands accept `--on-behalf-of` syntactically but reject it at runtime with `VALIDATION_ERROR`. User-signed actions do not support delegated account context. See [contracts-and-safety.md](contracts-and-safety.md#delegated-account-context---on-behalf-of) for details.
+
 ## Order Batch File Shape
 
 Use decimal-safe strings for all numeric fields:

@@ -30,6 +30,24 @@
 | `account` commands | Configured key (`private_key_env`) | User-signed path |
 | `info`, `agent snapshot`, `agent pnl`, `config`, `version` | No signing | Read/config path |
 
+## Delegated Account Context (`--on-behalf-of`)
+
+An approved agent can operate on another account's behalf using `--on-behalf-of <address>`.
+
+**Supported** — L1 phantom-agent commands:
+- `order place`, `order market`, `order cancel`, `order cancel-all`, `order modify`, `order batch`
+- `position leverage`, `position margin`
+- `agent bracket`
+
+**Not supported** — these reject `--on-behalf-of` with `VALIDATION_ERROR`:
+- All `account` commands (transfer, withdraw, send-asset, approve-agent, set-abstraction, class-transfer) — these use the user-signed path, which does not support delegation.
+- `order schedule-cancel` — the dead man's switch always applies to the signing wallet only.
+
+**Behaviour when set:**
+- The action is signed by the configured private key but executed in the context of the `--on-behalf-of` account.
+- `cancel-all` and `modify` also query open orders from the `--on-behalf-of` address (not the signer's address).
+- The signer must be an approved agent for the target account, or the exchange will reject the request.
+
 ## Precision and Serialization Rules
 
 - Use decimal-safe strings for all prices, sizes, and amounts.

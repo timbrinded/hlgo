@@ -67,6 +67,7 @@ Pick the wrong command/signing path and requests can fail with `SIGNING_ERROR` o
     - Use returned `matches[].coin` (for example `tngs:CHARIZARD-TGUSD`) in `order` commands.
 - **Treat non-zero exit codes as failures; branch on JSON `code`.** Exit codes map to error categories (1=validation, 3=network, 6=rate-limit). The `code` field in stderr JSON is the stable contract.
 - **Keep `--testnet` enabled during development and simulation.** Testnet is free. Mainnet costs real money. No flag = mainnet.
+- **Use `--on-behalf-of` only on L1 commands.** Order, position, and agent bracket commands support delegated account context. Account commands and schedule-cancel reject it. See `contracts-and-safety.md` for the full matrix.
 - **Never output private key material.** hlgo redacts keys in `config show`. Your scripts must too.
 
 ## Progressive Disclosure Map
