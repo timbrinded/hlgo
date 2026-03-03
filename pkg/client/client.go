@@ -134,6 +134,15 @@ func validateExchangeResponse(raw json.RawMessage) error {
 	return cliErr
 }
 
+func isBenignExchangeStatus(status string) bool {
+	switch normalized := strings.ToLower(strings.Trim(strings.TrimSpace(status), `"`)); normalized {
+	case "", "success", "waitingforfill":
+		return true
+	default:
+		return false
+	}
+}
+
 func validateExchangeStatuses(status string, response json.RawMessage) error {
 	var payload struct {
 		Data struct {
@@ -152,7 +161,7 @@ func validateExchangeStatuses(status string, response json.RawMessage) error {
 		var asString string
 		if err := json.Unmarshal(entryRaw, &asString); err == nil {
 			asString = strings.TrimSpace(asString)
-			if strings.EqualFold(asString, "success") || asString == "" {
+			if isBenignExchangeStatus(asString) {
 				continue
 			}
 			errs = append(errs, asString)
@@ -171,10 +180,18 @@ func validateExchangeStatuses(status string, response json.RawMessage) error {
 
 		var msg string
 		if err := json.Unmarshal(rawErr, &msg); err == nil && strings.TrimSpace(msg) != "" {
+			if isBenignExchangeStatus(msg) {
+				continue
+			}
 			errs = append(errs, msg)
 			continue
 		}
-		errs = append(errs, string(rawErr))
+
+		rawErrText := strings.TrimSpace(string(rawErr))
+		if isBenignExchangeStatus(rawErrText) {
+			continue
+		}
+		errs = append(errs, rawErrText)
 	}
 
 	if len(errs) == 0 {

@@ -208,6 +208,51 @@ func assertNoSecretLeak(t *testing.T, stdout, stderr string) {
 	}
 }
 
+func TestIntegration_InfoLookupAllDexesAllowsInheritedDefaultDex(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "integration-config.yaml")
+	cfg := []byte("agent_key_env: HL_TEST_AGENT_KEY\nmaster_key_env: HL_TEST_MASTER_KEY\ndefault_dex: tngs\nmetadata_ttl: 300\n")
+	if err := os.WriteFile(cfgPath, cfg, 0600); err != nil {
+		t.Fatalf("writing temp config: %v", err)
+	}
+
+	stdout, stderr, code := runIntegrationHLGO(t,
+		"--config", cfgPath,
+		"info", "lookup", "BTC",
+		"--dry-run",
+		"--all-dexes",
+	)
+	assertNoSecretLeak(t, stdout, stderr)
+	requireIntegrationExitCode(t, code, 0, stderr)
+
+	obj := parseJSONObject(t, stdout)
+	scope, ok := obj["scope"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected scope object, got %#v", obj["scope"])
+	}
+	requireFieldBool(t, scope, "all_dexes", true)
+	requireFieldString(t, scope, "dex", "tngs")
+
+	requests, ok := obj["requests"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected requests object, got %#v", obj["requests"])
+	}
+	if _, ok := requests["perp_dexs"]; !ok {
+		t.Fatal("expected perp_dexs request")
+	}
+
+	hip3Reqs, ok := requests["hip3_meta"].([]any)
+	if !ok || len(hip3Reqs) != 1 {
+		t.Fatalf("hip3_meta = %T(len=%d), want array len 1", requests["hip3_meta"], len(hip3Reqs))
+	}
+
+	hip3Req, ok := hip3Reqs[0].(map[string]any)
+	if !ok {
+		t.Fatalf("hip3_meta[0] = %T, want object", hip3Reqs[0])
+	}
+	requireFieldString(t, hip3Req, "type", "meta")
+	requireFieldString(t, hip3Req, "dex", "<each dex from perpDexs>")
+}
+
 func requiredLiveEnv(t *testing.T, names ...string) map[string]string {
 	t.Helper()
 

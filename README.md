@@ -35,13 +35,13 @@ Typical agent loop:
 ## Current Implementation Status
 
 Implemented and production-relevant today:
-- `info` command group (mids, metadata, book, trades, candles, funding, user state/open orders/fills/order status/rate limits, perp dex list)
-- `order` command group (`place`, `market`, `cancel`, `cancel-all`)
+- `version` command
 - `config` command group (`init`, `show`, `test`)
-
-Scaffolded but not yet implemented with subcommands:
-- `position`
-- `account`
+- `info` command group (mids, metadata, book, trades, candles, funding, user state/open orders/fills/order status/rate limits, perp dex list)
+- `agent` command group (`snapshot`, `pnl`, `bracket`)
+- `order` command group (`place`, `market`, `cancel`, `cancel-all`, `modify`, `batch`, `schedule-cancel`)
+- `position` command group (`leverage`, `margin`)
+- `account` command group (`transfer`, `class-transfer`, `withdraw`, `send-asset`, `approve-agent`, `set-abstraction`)
 
 ## Install and Build
 
@@ -98,8 +98,8 @@ metadata_ttl: 300
 ```
 
 Field meanings:
-- `agent_key_env`: env var name for agent private key (used by implemented order commands).
-- `master_key_env`: env var name for master key (reserved for future account commands).
+- `agent_key_env`: env var name for agent private key (used by `order`, `position`, and `agent bracket`).
+- `master_key_env`: env var name for master key (used by `account` commands).
 - `default_dex`: default HIP-3 dex for commands that support dex selection.
 - `metadata_ttl`: metadata cache TTL (seconds).
 
@@ -180,8 +180,8 @@ Exit code mapping:
 ### Dry-Run Behavior
 
 - `info ... --dry-run`: prints request payload JSON that would be sent to `/info`.
-- `order place --dry-run` and `order market --dry-run`: prints resolved action payload (and resolved order fields) without signing/sending.
-- `order cancel ... --dry-run`: prints cancel action payload without signing/sending.
+- Mutating commands (`order`, `position`, `account`, `agent bracket`) print action payloads without signing/sending.
+- `agent snapshot --dry-run` and `agent pnl --dry-run`: print composed request sets.
 
 ## Symbol and Asset Resolution
 
@@ -191,107 +191,36 @@ Resolver supports:
 - HIP-3 perps with dex prefix: `dex:COIN` (example `xyz:XYZ100`)
 - Numeric asset IDs (passthrough)
 
+When symbol formats are unclear, use lookup first:
+
+```bash
+hlgo info lookup charizardusd --dex tngs --testnet
+hlgo info lookup 110000 --testnet
+```
+
+`info lookup` returns canonical `coin` values to use with trading commands and the matching `asset_id`.
+
 Important market-order note:
 - `order market` needs mids lookup, so use named symbols (not numeric asset IDs).
 - Spot aliases are internally mapped to canonical pair symbols before mids lookup.
 
 ## Command Reference (Implemented)
 
-### `info`
+Top-level command groups:
+- `hlgo version`
+- `hlgo config ...`
+- `hlgo info ...`
+- `hlgo agent ...`
+- `hlgo order ...`
+- `hlgo position ...`
+- `hlgo account ...`
 
-Read-only market and account data.
-
-Commands:
-- `hlgo info mids`
-- `hlgo info meta [--spot] [--dex <name>]`
-- `hlgo info meta-and-ctxs [--spot] [--dex <name>]`
-- `hlgo info book <coin> [--sigfigs N] [--mantissa 1|2|5] [--depth N]`
-- `hlgo info trades <coin>`
-- `hlgo info candles <coin> <interval> [--start ...] [--end ...]`
-- `hlgo info funding <coin> [--start ...] [--end ...] [--predicted]`
-- `hlgo info state [--address ...] [--dex <name>]`
-- `hlgo info spot-state [--address ...]`
-- `hlgo info open-orders [--address ...] [--dex <name>]`
-- `hlgo info fills [--address ...] [--start ...] [--end ...] [--aggregate-by-time]`
-- `hlgo info order-status <oid-or-cloid> [--address ...]`
-- `hlgo info rate-limit [--address ...]`
-- `hlgo info perp-dexs`
+Detailed command surface (flags + examples for every implemented command):
+- [`skill/hlgo/references/command-reference.md`](./skill/hlgo/references/command-reference.md)
 
 Notes:
 - User-scoped info commands derive address from `HL_AGENT_KEY` if `--address` is omitted.
 - `info funding` currently requires a `<coin>` argument even with `--predicted`.
-
-### `order`
-
-Signed trading actions using agent wallet (L1 phantom agent signing path).
-
-Commands:
-- `hlgo order place`
-- `hlgo order market`
-- `hlgo order cancel`
-- `hlgo order cancel-all`
-
-### `order place`
-
-Required:
-- `--coin`
-- `--side buy|sell`
-- `--price`
-- `--size`
-
-Common optional flags:
-- `--tif gtc|ioc|alo`
-- `--reduce`
-- `--cloid`
-- `--builder` with `--builder-fee-tenths-bp`
-- `--vault`
-- `--expires-after <unix_ms|iso8601>`
-
-### `order market`
-
-Required:
-- `--coin`
-- `--side buy|sell`
-- `--size`
-
-Optional:
-- `--slippage` (percent, default `0.5`)
-- `--builder` with `--builder-fee-tenths-bp`
-- `--vault`
-- `--expires-after`
-
-Semantics:
-- Market order is implemented as aggressive IOC limit.
-- Price source: current mids.
-- Slippage is percent (`1` means 1%).
-- Price is snapped to nearest wire-valid price before signing.
-
-### `order cancel`
-
-Required:
-- `--coin`
-- Exactly one of `--oid` or `--cloid`
-
-Optional:
-- `--vault`
-- `--expires-after`
-
-### `order cancel-all`
-
-Optional:
-- `--coin` (filter)
-- `--vault`
-- `--expires-after`
-
-Behavior:
-- Fetches open orders first, then submits cancel action for matching orders.
-
-### `config`
-
-Commands:
-- `hlgo config init`
-- `hlgo config show`
-- `hlgo config test`
 
 ## Trading Recipes (Testnet)
 
@@ -418,7 +347,9 @@ go build -ldflags "-X main.version=x.y.z" -o hlgo .
 
 Common failure patterns:
 - `CONFIG_ERROR` with missing key env var:
-  - set `HL_AGENT_KEY`, or update `agent_key_env` in config.
+  - set `HL_AGENT_KEY` for `order`/`position`/`agent bracket`.
+  - set `HL_MASTER_KEY` for `account` commands.
+  - or update `agent_key_env` / `master_key_env` in config.
 - `VALIDATION_ERROR` on order price/size:
   - check tick/lot constraints, side/tif values, and symbol format.
 - `VALIDATION_ERROR` on market order mids:
@@ -431,6 +362,9 @@ For command-specific options, run:
 ```bash
 hlgo --help
 hlgo info --help
+hlgo agent --help
 hlgo order --help
+hlgo position --help
+hlgo account --help
 hlgo config --help
 ```

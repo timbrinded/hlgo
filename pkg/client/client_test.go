@@ -223,10 +223,34 @@ func TestPostExchange_OrderStatusesErrorReturnsAPIError(t *testing.T) {
 	}
 }
 
+func TestPostExchange_WaitingForFillStatusesAreAccepted(t *testing.T) {
+	srv := newTestServer(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":"ok","response":{"type":"order","data":{"statuses":["success","waitingForFill",{"error":"waitingForFill"},{"resting":{"oid":123}}]}}}`)
+	})
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	result, err := c.PostExchange(
+		context.Background(),
+		map[string]string{"type": "order"},
+		1700000000000,
+		SignatureWire{R: "0x1", S: "0x2", V: 27},
+		"",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("expected waitingForFill statuses to be treated as benign, got error: %v", err)
+	}
+	if len(result) == 0 {
+		t.Fatal("expected non-empty exchange response")
+	}
+}
+
 func TestPostExchange_MixedOrderStatusesDetectsError(t *testing.T) {
 	srv := newTestServer(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"status":"ok","response":{"type":"cancel","data":{"statuses":["success",{"error":"order was already canceled"},"success"]}}}`)
+		fmt.Fprint(w, `{"status":"ok","response":{"type":"cancel","data":{"statuses":["success","waitingForFill",{"error":"order was already canceled"},"success"]}}}`)
 	})
 	defer srv.Close()
 

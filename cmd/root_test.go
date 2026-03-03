@@ -42,7 +42,7 @@ func TestVersionCommand_OutputsVersion(t *testing.T) {
 func TestSubcommands_Registered(t *testing.T) {
 	root := NewRootCommand("dev")
 
-	want := []string{"version", "info", "order", "position", "account", "config"}
+	want := []string{"version", "info", "order", "position", "agent", "account", "config"}
 	cmds := make(map[string]bool)
 	for _, sub := range root.Commands() {
 		cmds[sub.Use] = true

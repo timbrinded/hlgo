@@ -48,6 +48,7 @@ Errors are returned as structured JSON to stderr with machine-readable codes.`,
 		newInfoCmd(),
 		newOrderCmd(),
 		newPositionCmd(),
+		newAgentCmd(),
 		newAccountCmd(),
 		newConfigCmd(),
 	)

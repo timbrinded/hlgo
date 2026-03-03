@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -101,6 +102,208 @@ func TestExecutor_PlaceOrder_DryRun(t *testing.T) {
 	}
 	if action.Builder.F != 10 {
 		t.Errorf("builder fee = %d, want 10", action.Builder.F)
+	}
+}
+
+func TestExecutor_PlaceOrder_DryRun_WithBracketTriggers(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), &mockResolver{
+		info: &resolver.AssetInfo{
+			AssetID:    0,
+			Coin:       "BTC",
+			SzDecimals: 3,
+			IsSpot:     false,
+		},
+	}, false)
+
+	tp := "50500"
+	sl := "49500"
+	result, err := exec.PlaceOrder(context.Background(), PlaceOrderInput{
+		Coin:      "BTC",
+		Side:      "buy",
+		Price:     decimal.NewFromInt(50000),
+		Size:      decimal.RequireFromString("0.01"),
+		Tif:       "Gtc",
+		TpTrigger: &tp,
+		SlTrigger: &sl,
+		DryRun:    true,
+	})
+	if err != nil {
+		t.Fatalf("PlaceOrder dry-run error: %v", err)
+	}
+
+	if result.Action == nil {
+		t.Fatal("expected action in dry-run result")
+	}
+	if got := result.Action.Grouping; got != "normalTpsl" {
+		t.Fatalf("grouping = %q, want normalTpsl", got)
+	}
+
+	if got := len(result.Action.Orders); got != 3 {
+		t.Fatalf("orders len = %d, want 3", got)
+	}
+
+	wantTP, err := wire.PriceToWire(decimal.RequireFromString(tp), 3, false)
+	if err != nil {
+		t.Fatalf("wire TP price: %v", err)
+	}
+	wantSL, err := wire.PriceToWire(decimal.RequireFromString(sl), 3, false)
+	if err != nil {
+		t.Fatalf("wire SL price: %v", err)
+	}
+
+	tpOrder := result.Action.Orders[1]
+	slOrder := result.Action.Orders[2]
+	if tpOrder.T.Trigger == nil || slOrder.T.Trigger == nil {
+		t.Fatal("expected trigger wires on tp/sl orders")
+	}
+	if tpOrder.T.Trigger.TriggerPx != wantTP {
+		t.Errorf("tp trigger px = %q, want %q", tpOrder.T.Trigger.TriggerPx, wantTP)
+	}
+	if slOrder.T.Trigger.TriggerPx != wantSL {
+		t.Errorf("sl trigger px = %q, want %q", slOrder.T.Trigger.TriggerPx, wantSL)
+	}
+	if tpOrder.B {
+		t.Errorf("tp order side is buy, want sell for long bracket")
+	}
+	if slOrder.B {
+		t.Errorf("sl order side is buy, want sell for long bracket")
+	}
+}
+
+func TestExecutor_PlaceOrder_RejectsInvalidTriggerPrice(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), &mockResolver{
+		info: &resolver.AssetInfo{
+			AssetID:    0,
+			Coin:       "BTC",
+			SzDecimals: 3,
+			IsSpot:     false,
+		},
+	}, false)
+
+	bad := "not-a-price"
+	_, err = exec.PlaceOrder(context.Background(), PlaceOrderInput{
+		Coin:      "BTC",
+		Side:      "buy",
+		Price:     decimal.NewFromInt(50000),
+		Size:      decimal.RequireFromString("0.01"),
+		Tif:       "Gtc",
+		TpTrigger: &bad,
+		DryRun:    true,
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrValidation {
+		t.Errorf("code = %q, want %q", cliErr.Code, output.ErrValidation)
+	}
+}
+
+func TestExecutor_PlaceOrder_WrapsTpWireValidationError(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), &mockResolver{
+		info: &resolver.AssetInfo{
+			AssetID:    0,
+			Coin:       "BTC",
+			SzDecimals: 3,
+			IsSpot:     false,
+		},
+	}, false)
+
+	invalidTp := "50500.12" // exceeds 5 significant figures for wire price rules.
+	_, err = exec.PlaceOrder(context.Background(), PlaceOrderInput{
+		Coin:      "BTC",
+		Side:      "buy",
+		Price:     decimal.NewFromInt(50000),
+		Size:      decimal.RequireFromString("0.01"),
+		Tif:       "Gtc",
+		TpTrigger: &invalidTp,
+		DryRun:    true,
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrValidation {
+		t.Errorf("code = %q, want %q", cliErr.Code, output.ErrValidation)
+	}
+	if got := cliErr.Details["flag"]; got != "--tp" {
+		t.Errorf("details.flag = %v, want --tp", got)
+	}
+	if !strings.Contains(cliErr.Message, "--tp trigger price:") {
+		t.Errorf("message = %q, want --tp trigger context", cliErr.Message)
+	}
+	if _, ok := cliErr.Details["max_sig_figs"]; !ok {
+		t.Errorf("expected original validation details to be preserved, got %#v", cliErr.Details)
+	}
+}
+
+func TestExecutor_PlaceOrder_WrapsSlWireValidationError(t *testing.T) {
+	s, err := signer.NewSigner(testPrivateKey)
+	if err != nil {
+		t.Fatalf("creating signer: %v", err)
+	}
+
+	exec := NewExecutor(s, client.NewClient("http://unused"), &mockResolver{
+		info: &resolver.AssetInfo{
+			AssetID:    0,
+			Coin:       "BTC",
+			SzDecimals: 3,
+			IsSpot:     false,
+		},
+	}, false)
+
+	invalidSl := "49500.12" // exceeds 5 significant figures for wire price rules.
+	_, err = exec.PlaceOrder(context.Background(), PlaceOrderInput{
+		Coin:      "BTC",
+		Side:      "buy",
+		Price:     decimal.NewFromInt(50000),
+		Size:      decimal.RequireFromString("0.01"),
+		Tif:       "Gtc",
+		SlTrigger: &invalidSl,
+		DryRun:    true,
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrValidation {
+		t.Errorf("code = %q, want %q", cliErr.Code, output.ErrValidation)
+	}
+	if got := cliErr.Details["flag"]; got != "--sl" {
+		t.Errorf("details.flag = %v, want --sl", got)
+	}
+	if !strings.Contains(cliErr.Message, "--sl trigger price:") {
+		t.Errorf("message = %q, want --sl trigger context", cliErr.Message)
+	}
+	if _, ok := cliErr.Details["max_sig_figs"]; !ok {
+		t.Errorf("expected original validation details to be preserved, got %#v", cliErr.Details)
 	}
 }
 

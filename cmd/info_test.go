@@ -403,7 +403,7 @@ func TestInfoSubcommands_AllRegistered(t *testing.T) {
 	}
 
 	want := []string{
-		"mids", "meta", "meta-and-ctxs", "book", "trades", "candles",
+		"lookup", "mids", "meta", "meta-and-ctxs", "book", "trades", "candles",
 		"state", "spot-state", "open-orders", "fills", "order-status", "rate-limit",
 		"funding", "perp-dexs",
 	}

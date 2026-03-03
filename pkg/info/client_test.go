@@ -149,3 +149,31 @@ func TestInfoClient_PredictedFundings(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestInfoClient_UserFunding(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]any
+		json.Unmarshal(body, &req)
+		if req["type"] != "userFunding" {
+			t.Errorf("type = %v, want userFunding", req["type"])
+		}
+		if req["user"] != "0xabc" {
+			t.Errorf("user = %v, want 0xabc", req["user"])
+		}
+		if req["startTime"] != float64(10) {
+			t.Errorf("startTime = %v, want 10", req["startTime"])
+		}
+		if req["endTime"] != float64(20) {
+			t.Errorf("endTime = %v, want 20", req["endTime"])
+		}
+		fmt.Fprint(w, `[]`)
+	}))
+	defer srv.Close()
+
+	ic := NewInfoClient(client.NewClient(srv.URL))
+	_, err := ic.UserFunding(context.Background(), "0xabc", 10, 20)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

@@ -322,6 +322,34 @@ func (f FillsResult) Rows() [][]string {
 	return rows
 }
 
+// UserFundingDelta holds the nested delta payload for user funding entries.
+type UserFundingDelta struct {
+	Type        string `json:"type"`
+	Coin        string `json:"coin"`
+	USDC        string `json:"usdc"`
+	Szi         string `json:"szi,omitempty"`
+	FundingRate string `json:"fundingRate,omitempty"`
+}
+
+// UserFundingEntry represents a single user funding event.
+type UserFundingEntry struct {
+	Time  int64            `json:"time"`
+	Hash  string           `json:"hash"`
+	Delta UserFundingDelta `json:"delta"`
+}
+
+// UserFundingResult is a list of user funding events.
+type UserFundingResult []UserFundingEntry
+
+// ParseUserFundingResult unmarshals raw JSON into a UserFundingResult.
+func ParseUserFundingResult(raw json.RawMessage) (UserFundingResult, error) {
+	var result UserFundingResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("parsing user funding: %w", err)
+	}
+	return result, nil
+}
+
 // FundingEntry represents a single funding rate entry.
 type FundingEntry struct {
 	Coin        string `json:"coin"`

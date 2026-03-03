@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -317,6 +318,22 @@ func marketCoinDex(coin string) string {
 	return strings.ToLower(strings.TrimSpace(coin[:idx]))
 }
 
+func wrapTriggerPriceError(flag string, err error) error {
+	var cliErr *output.CLIError
+	if errors.As(err, &cliErr) {
+		wrapped := output.NewCLIError(cliErr.Code, flag+" trigger price: "+cliErr.Message).
+			WithDetails("flag", flag)
+		for k, v := range cliErr.Details {
+			wrapped = wrapped.WithDetails(k, v)
+		}
+		return wrapped
+	}
+
+	return output.NewCLIError(output.ErrValidation, flag+" trigger price validation failed").
+		WithDetails("flag", flag).
+		WithDetails("cause", err.Error())
+}
+
 // PlaceOrder executes the full order placement pipeline.
 func (e *Executor) PlaceOrder(ctx context.Context, input PlaceOrderInput) (*PlaceOrderResult, error) {
 	// 1. Resolve coin → asset info.
@@ -361,10 +378,28 @@ func (e *Executor) PlaceOrder(ctx context.Context, input PlaceOrderInput) (*Plac
 	}
 	var triggers []triggerDef
 	if input.TpTrigger != nil {
-		triggers = append(triggers, triggerDef{px: *input.TpTrigger, tpsl: "tp"})
+		tpPrice, err := decimal.NewFromString(*input.TpTrigger)
+		if err != nil {
+			return nil, output.NewCLIError(output.ErrValidation, "invalid take-profit trigger price").
+				WithDetails("value", *input.TpTrigger)
+		}
+		tpWire, err := wire.PriceToWire(tpPrice, info.SzDecimals, info.IsSpot)
+		if err != nil {
+			return nil, wrapTriggerPriceError("--tp", err)
+		}
+		triggers = append(triggers, triggerDef{px: tpWire, tpsl: "tp"})
 	}
 	if input.SlTrigger != nil {
-		triggers = append(triggers, triggerDef{px: *input.SlTrigger, tpsl: "sl"})
+		slPrice, err := decimal.NewFromString(*input.SlTrigger)
+		if err != nil {
+			return nil, output.NewCLIError(output.ErrValidation, "invalid stop-loss trigger price").
+				WithDetails("value", *input.SlTrigger)
+		}
+		slWire, err := wire.PriceToWire(slPrice, info.SzDecimals, info.IsSpot)
+		if err != nil {
+			return nil, wrapTriggerPriceError("--sl", err)
+		}
+		triggers = append(triggers, triggerDef{px: slWire, tpsl: "sl"})
 	}
 	for _, trig := range triggers {
 		trigOrder := OrderParams{
