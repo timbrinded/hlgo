@@ -31,8 +31,8 @@ func TestConfigInit_CreatesFile(t *testing.T) {
 	}
 
 	content := string(data)
-	if !strings.Contains(content, "agent_key_env") {
-		t.Error("config file missing agent_key_env")
+	if !strings.Contains(content, "private_key_env") {
+		t.Error("config file missing private_key_env")
 	}
 
 	var out map[string]string
@@ -88,8 +88,7 @@ func TestConfigInit_CustomValues(t *testing.T) {
 	root.SetArgs([]string{
 		"config", "init",
 		"--config", cfgPath,
-		"--agent-key-env", "CUSTOM_AGENT",
-		"--master-key-env", "CUSTOM_MASTER",
+		"--private-key-env", "CUSTOM_KEY",
 		"--default-dex", "xyz",
 		"--metadata-ttl", "60",
 	})
@@ -100,11 +99,8 @@ func TestConfigInit_CustomValues(t *testing.T) {
 
 	data, _ := os.ReadFile(cfgPath)
 	content := string(data)
-	if !strings.Contains(content, "CUSTOM_AGENT") {
-		t.Error("custom agent key env not written")
-	}
-	if !strings.Contains(content, "CUSTOM_MASTER") {
-		t.Error("custom master key env not written")
+	if !strings.Contains(content, "CUSTOM_KEY") {
+		t.Error("custom private key env not written")
 	}
 }
 
@@ -128,7 +124,7 @@ func TestConfigInit_WarnsOnMissingEnv(t *testing.T) {
 func TestConfigShow_Output(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
-	os.WriteFile(cfgPath, []byte("agent_key_env: TEST_KEY\nmetadata_ttl: 120\n"), 0600)
+	os.WriteFile(cfgPath, []byte("private_key_env: TEST_KEY\nmetadata_ttl: 120\n"), 0600)
 	t.Setenv("TEST_KEY", "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
 
 	root := NewRootCommand(BuildInfo{Version: "test"})
@@ -145,11 +141,11 @@ func TestConfigShow_Output(t *testing.T) {
 		t.Fatalf("stdout not valid JSON: %v\nraw: %s", err, buf.String())
 	}
 
-	if out["agent_key_set"] != true {
-		t.Error("agent_key_set should be true")
+	if out["private_key_set"] != true {
+		t.Error("private_key_set should be true")
 	}
 
-	preview, _ := out["agent_key_preview"].(string)
+	preview, _ := out["private_key_preview"].(string)
 	if !strings.Contains(preview, "...") {
 		t.Errorf("expected redacted preview, got %q", preview)
 	}
@@ -169,7 +165,7 @@ func TestConfigTest_AllGood(t *testing.T) {
 
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
-	os.WriteFile(cfgPath, []byte("agent_key_env: TEST_KEY\n"), 0600)
+	os.WriteFile(cfgPath, []byte("private_key_env: TEST_KEY\n"), 0600)
 	t.Setenv("TEST_KEY", "0xdeadbeef")
 
 	root := NewRootCommand(BuildInfo{Version: "test"})
@@ -188,8 +184,8 @@ func TestConfigTest_AllGood(t *testing.T) {
 	if out["config_readable"] != true {
 		t.Error("config_readable should be true")
 	}
-	if out["agent_key_env_set"] != true {
-		t.Error("agent_key_env_set should be true")
+	if out["private_key_env_set"] != true {
+		t.Error("private_key_env_set should be true")
 	}
 
 	conn, ok := out["connectivity"].(map[string]any)
@@ -213,7 +209,7 @@ func TestConfigTest_NoFileReportsNotReadable(t *testing.T) {
 	root.SetOut(buf)
 	root.SetArgs([]string{"config", "test"})
 
-	// Will error because agent key env defaults to HL_AGENT_KEY which isn't set,
+	// Will error because private key env defaults to HL_PRIVATE_KEY which isn't set,
 	// but we care about config_readable in the JSON output.
 	root.Execute()
 
@@ -235,7 +231,7 @@ func TestConfigTest_MissingEnvVar(t *testing.T) {
 
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
-	os.WriteFile(cfgPath, []byte("agent_key_env: DEFINITELY_NOT_SET_XYZ\n"), 0600)
+	os.WriteFile(cfgPath, []byte("private_key_env: DEFINITELY_NOT_SET_XYZ\n"), 0600)
 
 	root := NewRootCommand(BuildInfo{Version: "test"})
 	buf := new(bytes.Buffer)
@@ -244,6 +240,6 @@ func TestConfigTest_MissingEnvVar(t *testing.T) {
 
 	err := root.Execute()
 	if err == nil {
-		t.Fatal("expected error when agent key env var is not set")
+		t.Fatal("expected error when private key env var is not set")
 	}
 }

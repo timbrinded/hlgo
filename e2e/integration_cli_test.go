@@ -38,7 +38,7 @@ func TestMain(m *testing.M) {
 
 	if os.Getenv("HL_CONFIG") == "" {
 		cfgPath := filepath.Join(dir, "integration-config.yaml")
-		cfg := []byte("agent_key_env: HL_TEST_AGENT_KEY\nmaster_key_env: HL_TEST_MASTER_KEY\nmetadata_ttl: 300\n")
+		cfg := []byte("private_key_env: HL_TEST_PRIVATE_KEY\nmetadata_ttl: 300\n")
 		if err := os.WriteFile(cfgPath, cfg, 0600); err != nil {
 			panic("cannot write integration config: " + err.Error())
 		}
@@ -183,10 +183,10 @@ func requireErrorCode(t *testing.T, stderr, want string) map[string]any {
 	return errObj
 }
 
-func ensureMasterKeyForAccountDryRun(t *testing.T) {
+func ensurePrivateKeyForAccountDryRun(t *testing.T) {
 	t.Helper()
-	if strings.TrimSpace(os.Getenv("HL_TEST_MASTER_KEY")) == "" {
-		t.Setenv("HL_TEST_MASTER_KEY", integrationTestPrivateKey)
+	if strings.TrimSpace(os.Getenv("HL_TEST_PRIVATE_KEY")) == "" {
+		t.Setenv("HL_TEST_PRIVATE_KEY", integrationTestPrivateKey)
 	}
 }
 
@@ -194,8 +194,7 @@ func assertNoSecretLeak(t *testing.T, stdout, stderr string) {
 	t.Helper()
 	candidates := []string{
 		integrationTestPrivateKey,
-		strings.TrimSpace(os.Getenv("HL_TEST_MASTER_KEY")),
-		strings.TrimSpace(os.Getenv("HL_TEST_AGENT_KEY")),
+		strings.TrimSpace(os.Getenv("HL_TEST_PRIVATE_KEY")),
 	}
 
 	for _, secret := range candidates {
@@ -210,7 +209,7 @@ func assertNoSecretLeak(t *testing.T, stdout, stderr string) {
 
 func TestIntegration_InfoLookupAllDexesAllowsInheritedDefaultDex(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "integration-config.yaml")
-	cfg := []byte("agent_key_env: HL_TEST_AGENT_KEY\nmaster_key_env: HL_TEST_MASTER_KEY\ndefault_dex: tngs\nmetadata_ttl: 300\n")
+	cfg := []byte("private_key_env: HL_TEST_PRIVATE_KEY\ndefault_dex: tngs\nmetadata_ttl: 300\n")
 	if err := os.WriteFile(cfgPath, cfg, 0600); err != nil {
 		t.Fatalf("writing temp config: %v", err)
 	}
@@ -330,8 +329,8 @@ func findOpenOrderByLimitPx(orders []map[string]any, px string) (map[string]any,
 }
 
 func TestIntegration_OrderLifecycle(t *testing.T) {
-	if os.Getenv("HL_TEST_AGENT_KEY") == "" {
-		t.Skip("skipping order lifecycle integration: HL_TEST_AGENT_KEY is not set")
+	if os.Getenv("HL_TEST_PRIVATE_KEY") == "" {
+		t.Skip("skipping order lifecycle integration: HL_TEST_PRIVATE_KEY is not set")
 	}
 
 	cloid := newIntegrationCloid(t)
@@ -750,11 +749,11 @@ func TestIntegration_AccountValidationContracts(t *testing.T) {
 	}
 }
 
-func TestIntegration_AccountMissingMasterKeyConfigError(t *testing.T) {
-	t.Setenv("HL_TEST_MASTER_KEY_NOT_SET", "")
+func TestIntegration_AccountMissingPrivateKeyConfigError(t *testing.T) {
+	t.Setenv("HL_TEST_PRIVATE_KEY_NOT_SET", "")
 
 	cfgPath := filepath.Join(t.TempDir(), "integration-config.yaml")
-	cfg := []byte("agent_key_env: HL_TEST_AGENT_KEY\nmaster_key_env: HL_TEST_MASTER_KEY_NOT_SET\nmetadata_ttl: 300\n")
+	cfg := []byte("private_key_env: HL_TEST_PRIVATE_KEY_NOT_SET\nmetadata_ttl: 300\n")
 	if err := os.WriteFile(cfgPath, cfg, 0600); err != nil {
 		t.Fatalf("writing temp config: %v", err)
 	}
@@ -769,17 +768,17 @@ func TestIntegration_AccountMissingMasterKeyConfigError(t *testing.T) {
 	assertNoSecretLeak(t, stdout, stderr)
 	requireIntegrationExitCode(t, code, 2, stderr)
 	errObj := requireErrorCode(t, stderr, "CONFIG_ERROR")
-	requireFieldString(t, errObj, "error", "master key not set")
+	requireFieldString(t, errObj, "error", "private key not set")
 
 	details, ok := errObj["details"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected details map, got %#v", errObj["details"])
 	}
-	requireFieldString(t, details, "env_var", "HL_TEST_MASTER_KEY_NOT_SET")
+	requireFieldString(t, details, "env_var", "HL_TEST_PRIVATE_KEY_NOT_SET")
 }
 
 func TestIntegration_AccountDryRunNonceFreshness(t *testing.T) {
-	ensureMasterKeyForAccountDryRun(t)
+	ensurePrivateKeyForAccountDryRun(t)
 
 	stdout1, stderr1, code1 := runIntegrationHLGO(t,
 		"account", "transfer",
@@ -811,8 +810,8 @@ func TestIntegration_AccountDryRunNonceFreshness(t *testing.T) {
 }
 
 func TestIntegration_AccountLiveReversibleFlows(t *testing.T) {
-	if strings.TrimSpace(os.Getenv("HL_TEST_MASTER_KEY")) == "" {
-		t.Skip("skipping live account reversible flows: HL_TEST_MASTER_KEY is not set")
+	if strings.TrimSpace(os.Getenv("HL_TEST_PRIVATE_KEY")) == "" {
+		t.Skip("skipping live account reversible flows: HL_TEST_PRIVATE_KEY is not set")
 	}
 
 	req := requiredLiveEnv(t, "HL_TEST_ACCOUNT_TRANSFER_AMOUNT")
@@ -946,8 +945,8 @@ func TestIntegration_AccountLiveReversibleFlows(t *testing.T) {
 }
 
 func TestIntegration_AccountLiveOneWayOperations(t *testing.T) {
-	if strings.TrimSpace(os.Getenv("HL_TEST_MASTER_KEY")) == "" {
-		t.Skip("skipping live account one-way operations: HL_TEST_MASTER_KEY is not set")
+	if strings.TrimSpace(os.Getenv("HL_TEST_PRIVATE_KEY")) == "" {
+		t.Skip("skipping live account one-way operations: HL_TEST_PRIVATE_KEY is not set")
 	}
 
 	req := requiredLiveEnv(

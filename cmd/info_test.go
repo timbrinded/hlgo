@@ -21,14 +21,14 @@ const testMetaJSON = `{"universe":[{"name":"BTC","szDecimals":3},{"name":"ETH","
 const testSpotMetaJSON = `{"tokens":[{"name":"USDC","szDecimals":6,"index":0},{"name":"PURR","szDecimals":2,"index":1}],"universe":[{"name":"PURR/USDC","index":0,"tokens":[1,0]}]}`
 
 // newTestRootWithServer creates a root command configured to use the given test server URL.
-// It writes a temporary config file pointing agent_key_env at a set env var,
+// It writes a temporary config file pointing private_key_env at a set env var,
 // and pre-populates the resolver cache so order commands don't need a live API.
 func newTestRootWithServer(t *testing.T, _ string) (*bytes.Buffer, *bytes.Buffer, func(args ...string) error) {
 	t.Helper()
 
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
-	os.WriteFile(cfgPath, []byte("agent_key_env: TEST_HL_KEY\nmaster_key_env: TEST_HL_MASTER_KEY\nmetadata_ttl: 300\n"), 0600)
+	os.WriteFile(cfgPath, []byte("private_key_env: TEST_HL_PRIVATE_KEY\nmetadata_ttl: 300\n"), 0600)
 
 	// Set HOME so resolveCacheDir uses our temp dir.
 	t.Setenv("HOME", dir)
@@ -46,8 +46,7 @@ func newTestRootWithServer(t *testing.T, _ string) (*bytes.Buffer, *bytes.Buffer
 	}
 
 	// Set a well-known test key for address resolution.
-	t.Setenv("TEST_HL_KEY", "0x0123456789012345678901234567890123456789012345678901234567890123")
-	t.Setenv("TEST_HL_MASTER_KEY", "0x0123456789012345678901234567890123456789012345678901234567890123")
+	t.Setenv("TEST_HL_PRIVATE_KEY", "0x0123456789012345678901234567890123456789012345678901234567890123")
 
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)

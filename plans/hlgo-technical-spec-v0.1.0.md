@@ -57,10 +57,10 @@ Two distinct signing paths, both using EIP-712 typed data:
 
 **User-Signed Actions** — used for transfers, withdrawals, agent management:
 
-- Chain ID: `0xa4b1` (Arbitrum, 42161)
+- Chain ID: `0x66eee` (Arbitrum Sepolia, 421614; SDK-compat signing constant)
 - Domain name: `"HyperliquidSignTransaction"`
 - Flow: construct EIP-712 typed data directly → sign
-- **Only master wallet can sign these**
+- **Signed with the configured private key**
 
 ### 2.3 Nonces
 
@@ -181,7 +181,7 @@ POST /info {"type": "clearinghouseState", "user": "0x..."}
 POST /info {"type": "clearinghouseState", "user": "0x...", "dex": "xyz"}
 ```
 
-Defaults to agent wallet address if no address provided.
+Defaults to the address derived from the configured private key if no address is provided.
 
 #### `hlgo info spot-state [address]`
 Spot balances and holds.
@@ -227,9 +227,9 @@ List all HIP-3 perp dexes.
 POST /info {"type": "perpDexs"}
 ```
 
-### 4.2 Exchange Commands (Signed, Agent Wallet)
+### 4.2 Exchange Commands (Signed, L1 Path)
 
-All exchange commands use the **agent wallet** for signing (L1 phantom agent path).
+All exchange commands use the configured private key for signing (L1 phantom agent path), with optional `--on-behalf-of` account context where supported.
 
 #### `hlgo order place`
 Place a limit order.
@@ -241,7 +241,7 @@ Key flags:
 - `--cloid`
 - `--tp`, `--sl`
 - `--builder-fee`
-- `--vault`
+- `--on-behalf-of`
 
 The CLI resolves asset IDs, tick size, and lot size from metadata, then rounds and signs correctly.
 

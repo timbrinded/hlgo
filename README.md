@@ -32,7 +32,7 @@ Or download a prebuilt binary from [Releases](https://github.com/timbrinded/hlgo
 hlgo config init
 
 # 2. Export your agent private key
-export HL_AGENT_KEY=0xYOUR_PRIVATE_KEY
+export HL_PRIVATE_KEY=0xYOUR_PRIVATE_KEY
 
 # 3. Verify connectivity
 hlgo config test --testnet

@@ -47,7 +47,7 @@ hlgo info mids --testnet --format json
 
 | Command | Purpose | Key Flags | Example |
 |---|---|---|---|
-| `hlgo config init` | Create config file | `--agent-key-env`, `--master-key-env`, `--default-dex`, `--metadata-ttl`, `--force` | `hlgo config init --agent-key-env HL_AGENT_KEY --master-key-env HL_MASTER_KEY` |
+| `hlgo config init` | Create config file | `--private-key-env`, `--private-key-env`, `--default-dex`, `--metadata-ttl`, `--force` | `hlgo config init --private-key-env HL_PRIVATE_KEY --private-key-env HL_PRIVATE_KEY` |
 | `hlgo config show` | Show resolved config with key redaction | `--config`, `--testnet`, `--format` | `hlgo config show --testnet` |
 | `hlgo config test` | Validate config readability, key envs, and API connectivity | `--config`, `--testnet` | `hlgo config test --testnet` |
 
@@ -77,26 +77,26 @@ hlgo info mids --testnet --format json
 |---|---|---|---|
 | `hlgo agent snapshot` | Aggregate state, spot-state, open-orders, fills, and mids | `--address` | `hlgo agent snapshot --testnet --format json` |
 | `hlgo agent pnl` | Compute unrealized, realized, and funding PnL | `--address`, `--lookback-hours`, `--aggregate-fills` | `hlgo agent pnl --lookback-hours 24 --aggregate-fills --testnet --format json` |
-| `hlgo agent bracket` | Place entry + TP + SL in one grouped action | `--coin`, `--side`, `--price`, `--size`, `--tp`, `--sl`, optional `--tif`, `--cloid`, `--vault`, `--builder`, `--builder-fee-tenths-bp`, `--expires-after` | `hlgo agent bracket --coin ETH --side buy --price 3000 --size 0.1 --tp 3100 --sl 2950 --testnet --dry-run` |
+| `hlgo agent bracket` | Place entry + TP + SL in one grouped action | `--coin`, `--side`, `--price`, `--size`, `--tp`, `--sl`, optional `--tif`, `--cloid`, `--on-behalf-of`, `--builder`, `--builder-fee-tenths-bp`, `--expires-after` | `hlgo agent bracket --coin ETH --side buy --price 3000 --size 0.1 --tp 3100 --sl 2950 --testnet --dry-run` |
 
 ## Order Commands
 
 | Command | Purpose | Key Flags | Example |
 |---|---|---|---|
-| `hlgo order place` | Place limit order | Required: `--coin`, `--side`, `--price`, `--size`; Optional: `--tif`, `--reduce`, `--cloid`, `--vault`, `--builder`, `--builder-fee-tenths-bp`, `--expires-after` | `hlgo order place --coin ETH --side buy --price 3000 --size 0.1 --tif gtc --testnet --dry-run` |
-| `hlgo order market` | Place market IOC via slippage-adjusted mid | Required: `--coin`, `--side`, `--size`; Optional: `--slippage`, `--vault`, `--builder`, `--builder-fee-tenths-bp`, `--expires-after` | `hlgo order market --coin ETH --side buy --size 0.1 --slippage 0.5 --testnet --dry-run` |
-| `hlgo order cancel` | Cancel by OID or CLOID | Required: `--coin` and exactly one of `--oid` or `--cloid`; Optional: `--vault`, `--expires-after` | `hlgo order cancel --coin ETH --oid 12345 --testnet --format json` |
-| `hlgo order cancel-all` | Cancel all open orders (optional coin filter) | Optional: `--coin`, `--vault`, `--expires-after` | `hlgo order cancel-all --coin ETH --testnet --format json` |
-| `hlgo order modify` | Modify existing order by OID | Required: `--coin`, `--oid`, `--side`, plus at least one of `--price`/`--size`; Optional: `--tif`, `--reduce`, `--vault`, `--expires-after` | `hlgo order modify --coin ETH --oid 12345 --side buy --price 2990 --size 0.1 --testnet --dry-run` |
-| `hlgo order batch` | Place multiple orders from JSON file | Required: `--file`; Optional: `--vault`, `--builder`, `--builder-fee-tenths-bp`, `--expires-after` | `hlgo order batch --file ./orders.json --testnet --dry-run` |
+| `hlgo order place` | Place limit order | Required: `--coin`, `--side`, `--price`, `--size`; Optional: `--tif`, `--reduce`, `--cloid`, `--on-behalf-of`, `--builder`, `--builder-fee-tenths-bp`, `--expires-after` | `hlgo order place --coin ETH --side buy --price 3000 --size 0.1 --tif gtc --testnet --dry-run` |
+| `hlgo order market` | Place market IOC via slippage-adjusted mid | Required: `--coin`, `--side`, `--size`; Optional: `--slippage`, `--on-behalf-of`, `--builder`, `--builder-fee-tenths-bp`, `--expires-after` | `hlgo order market --coin ETH --side buy --size 0.1 --slippage 0.5 --testnet --dry-run` |
+| `hlgo order cancel` | Cancel by OID or CLOID | Required: `--coin` and exactly one of `--oid` or `--cloid`; Optional: `--on-behalf-of`, `--expires-after` | `hlgo order cancel --coin ETH --oid 12345 --testnet --format json` |
+| `hlgo order cancel-all` | Cancel all open orders (optional coin filter) | Optional: `--coin`, `--on-behalf-of`, `--expires-after` | `hlgo order cancel-all --coin ETH --testnet --format json` |
+| `hlgo order modify` | Modify existing order by OID | Required: `--coin`, `--oid`, `--side`, plus at least one of `--price`/`--size`; Optional: `--tif`, `--reduce`, `--on-behalf-of`, `--expires-after` | `hlgo order modify --coin ETH --oid 12345 --side buy --price 2990 --size 0.1 --testnet --dry-run` |
+| `hlgo order batch` | Place multiple orders from JSON file | Required: `--file`; Optional: `--on-behalf-of`, `--builder`, `--builder-fee-tenths-bp`, `--expires-after` | `hlgo order batch --file ./orders.json --testnet --dry-run` |
 | `hlgo order schedule-cancel` | Set or clear dead-man switch | Exactly one of `--timeout` or `--clear` | `hlgo order schedule-cancel --timeout 15m --testnet --format json` |
 
 ## Position Commands
 
 | Command | Purpose | Key Flags | Example |
 |---|---|---|---|
-| `hlgo position leverage` | Set leverage + margin mode | Required: `--coin`, `--leverage`; Optional: `--mode`, `--vault` | `hlgo position leverage --coin ETH --leverage 5 --mode cross --testnet --format json` |
-| `hlgo position margin` | Adjust isolated margin | Required: `--coin`, `--side`, `--amount`; Optional: `--vault` | `hlgo position margin --coin ETH --side buy --amount 25 --testnet --format json` |
+| `hlgo position leverage` | Set leverage + margin mode | Required: `--coin`, `--leverage`; Optional: `--mode`, `--on-behalf-of` | `hlgo position leverage --coin ETH --leverage 5 --mode cross --testnet --format json` |
+| `hlgo position margin` | Adjust isolated margin | Required: `--coin`, `--side`, `--amount`; Optional: `--on-behalf-of` | `hlgo position margin --coin ETH --side buy --amount 25 --testnet --format json` |
 
 ## Account Commands
 

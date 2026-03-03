@@ -71,10 +71,10 @@ func TestPositionLeverage_InvalidVault(t *testing.T) {
 
 	err := run("position", "leverage",
 		"--coin", "ETH", "--leverage", "5", "--mode", "cross",
-		"--vault", "not-a-hex-address", "--dry-run",
+		"--on-behalf-of", "not-a-hex-address", "--dry-run",
 	)
 	if err == nil {
-		t.Fatal("expected error for invalid vault address")
+		t.Fatal("expected error for invalid on-behalf-of address")
 	}
 }
 
@@ -122,10 +122,10 @@ func TestPositionMargin_InvalidVault(t *testing.T) {
 
 	err := run("position", "margin",
 		"--coin", "BTC", "--side", "buy", "--amount", "100",
-		"--vault", "not-a-hex-address", "--dry-run",
+		"--on-behalf-of", "not-a-hex-address", "--dry-run",
 	)
 	if err == nil {
-		t.Fatal("expected error for invalid vault address")
+		t.Fatal("expected error for invalid on-behalf-of address")
 	}
 }
 

@@ -44,10 +44,10 @@ No daemons. No state between invocations. No hidden side effects.
 
 Trading tools handle private keys. The architecture must make misuse structurally difficult.
 
-- **Dual wallet isolation:** Agent wallet (limited to L1 trading) and master wallet (transfers, withdrawals) are separate config entries with separate signing paths. Commands auto-select the correct signer.
+- **Single key model with explicit account context:** One configured private key is used for signing. L1 actions may optionally include an on-behalf account context when operating for another authorized account.
 - **No key material in output.** Ever. Not in logs, not in errors, not in dry-run output.
 - **Testnet-first.** `--testnet` flag and `HL_TESTNET` env var. Default is mainnet, but development and testing always happen on testnet.
-- **Dangerous operations are gated.** Master wallet actions require explicit confirmation or `--dry-run` to preview.
+- **Dangerous operations are gated.** Withdrawal/send/revoke actions require explicit confirmation or `--dry-run` to preview.
 
 ## Built from Scratch
 

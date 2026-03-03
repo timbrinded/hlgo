@@ -16,8 +16,7 @@ func TestDefaults(t *testing.T) {
 		key  string
 		want any
 	}{
-		{"agent_key_env", "HL_AGENT_KEY"},
-		{"master_key_env", "HL_MASTER_KEY"},
+		{"private_key_env", "HL_PRIVATE_KEY"},
 		{"default_dex", ""},
 		{"metadata_ttl", 300},
 	}
@@ -45,7 +44,7 @@ func newTestViper(configPath string) *viper.Viper {
 func TestLoad_FromFile(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
-	content := []byte("agent_key_env: MY_KEY\nmaster_key_env: MY_MASTER\ndefault_dex: xyz\nmetadata_ttl: 120\n")
+	content := []byte("private_key_env: MY_KEY\ndefault_dex: xyz\nmetadata_ttl: 120\n")
 	if err := os.WriteFile(cfgPath, content, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -59,11 +58,8 @@ func TestLoad_FromFile(t *testing.T) {
 		t.Fatalf("Load error: %v", err)
 	}
 
-	if cfg.AgentKeyEnv != "MY_KEY" {
-		t.Errorf("AgentKeyEnv = %q, want %q", cfg.AgentKeyEnv, "MY_KEY")
-	}
-	if cfg.MasterKeyEnv != "MY_MASTER" {
-		t.Errorf("MasterKeyEnv = %q, want %q", cfg.MasterKeyEnv, "MY_MASTER")
+	if cfg.PrivateKeyEnv != "MY_KEY" {
+		t.Errorf("PrivateKeyEnv = %q, want %q", cfg.PrivateKeyEnv, "MY_KEY")
 	}
 	if cfg.DefaultDex != "xyz" {
 		t.Errorf("DefaultDex = %q, want %q", cfg.DefaultDex, "xyz")
@@ -86,8 +82,8 @@ func TestLoad_MissingConfigTolerated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error for missing config, got: %v", err)
 	}
-	if cfg.AgentKeyEnv != "HL_AGENT_KEY" {
-		t.Errorf("AgentKeyEnv = %q, want default %q", cfg.AgentKeyEnv, "HL_AGENT_KEY")
+	if cfg.PrivateKeyEnv != "HL_PRIVATE_KEY" {
+		t.Errorf("PrivateKeyEnv = %q, want default %q", cfg.PrivateKeyEnv, "HL_PRIVATE_KEY")
 	}
 }
 
@@ -146,7 +142,7 @@ func TestLoad_XDGFallback(t *testing.T) {
 	hlgoDir := filepath.Join(xdgDir, "hlgo")
 	os.MkdirAll(hlgoDir, 0700)
 	cfgPath := filepath.Join(hlgoDir, "config.yaml")
-	os.WriteFile(cfgPath, []byte("agent_key_env: XDG_FOUND\n"), 0600)
+	os.WriteFile(cfgPath, []byte("private_key_env: XDG_FOUND\n"), 0600)
 
 	// Use default config path so discovery kicks in via AddConfigPath
 	v := newTestViper(DefaultConfigPath)
@@ -155,7 +151,7 @@ func TestLoad_XDGFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load error: %v", err)
 	}
-	if cfg.AgentKeyEnv != "XDG_FOUND" {
-		t.Errorf("AgentKeyEnv = %q, want %q (from XDG path)", cfg.AgentKeyEnv, "XDG_FOUND")
+	if cfg.PrivateKeyEnv != "XDG_FOUND" {
+		t.Errorf("PrivateKeyEnv = %q, want %q (from XDG path)", cfg.PrivateKeyEnv, "XDG_FOUND")
 	}
 }

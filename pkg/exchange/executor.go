@@ -62,26 +62,26 @@ type PlaceOrderInput struct {
 	Builder    *BuilderInfo
 	// ExpiresAfter, when set, causes the action to be rejected after this Unix ms timestamp.
 	ExpiresAfter *int64
-	VaultAddr    string
+	OnBehalfOf   string
 	DryRun       bool
 }
 
 // UpdateLeverageInput holds parameters for updating leverage.
 type UpdateLeverageInput struct {
-	Coin      string
-	IsCross   bool
-	Leverage  int
-	VaultAddr string
-	DryRun    bool
+	Coin       string
+	IsCross    bool
+	Leverage   int
+	OnBehalfOf string
+	DryRun     bool
 }
 
 // UpdateIsolatedMarginInput holds parameters for adjusting isolated margin.
 type UpdateIsolatedMarginInput struct {
-	Coin      string
-	IsBuy     bool
-	Amount    decimal.Decimal
-	VaultAddr string
-	DryRun    bool
+	Coin       string
+	IsBuy      bool
+	Amount     decimal.Decimal
+	OnBehalfOf string
+	DryRun     bool
 }
 
 // ModifyOrderInput holds parameters for modifying an existing order.
@@ -95,14 +95,15 @@ type ModifyOrderInput struct {
 	ReduceOnly   bool
 	Cloid        *string
 	ExpiresAfter *int64
-	VaultAddr    string
+	OnBehalfOf   string
 	DryRun       bool
 }
 
 // ScheduleCancelInput holds parameters for the dead man's switch.
 type ScheduleCancelInput struct {
-	Time   *int64
-	DryRun bool
+	Time       *int64
+	OnBehalfOf string
+	DryRun     bool
 }
 
 // PlaceMarketOrderInput bundles parameters for placing a market order.
@@ -115,29 +116,32 @@ type PlaceMarketOrderInput struct {
 	Builder         *BuilderInfo
 	// ExpiresAfter, when set, causes the action to be rejected after this Unix ms timestamp.
 	ExpiresAfter *int64
-	VaultAddr    string
+	OnBehalfOf   string
 	DryRun       bool
 }
 
 // USDClassTransferInput holds parameters for usdClassTransfer account actions.
 type USDClassTransferInput struct {
-	Amount decimal.Decimal
-	ToPerp bool
-	DryRun bool
+	Amount     decimal.Decimal
+	ToPerp     bool
+	OnBehalfOf string
+	DryRun     bool
 }
 
 // Withdraw3Input holds parameters for withdraw3 account actions.
 type Withdraw3Input struct {
 	Destination string
 	Amount      decimal.Decimal
+	OnBehalfOf  string
 	DryRun      bool
 }
 
 // ClassTransferInput holds parameters for classTransfer account actions.
 type ClassTransferInput struct {
-	Amount decimal.Decimal
-	ToPerp bool
-	DryRun bool
+	Amount     decimal.Decimal
+	ToPerp     bool
+	OnBehalfOf string
+	DryRun     bool
 }
 
 // SpotSendInput holds parameters for spotSend account actions.
@@ -145,6 +149,7 @@ type SpotSendInput struct {
 	Destination string
 	Token       string
 	Amount      decimal.Decimal
+	OnBehalfOf  string
 	DryRun      bool
 }
 
@@ -152,6 +157,7 @@ type SpotSendInput struct {
 type ApproveAgentInput struct {
 	AgentAddress string
 	AgentName    string
+	OnBehalfOf   string
 	DryRun       bool
 }
 
@@ -159,6 +165,7 @@ type ApproveAgentInput struct {
 type UserSetAbstractionInput struct {
 	User        string
 	Abstraction string
+	OnBehalfOf  string
 	DryRun      bool
 }
 
@@ -305,7 +312,7 @@ func (e *Executor) PlaceMarketOrder(ctx context.Context, input PlaceMarketOrderI
 		Tif:          "Ioc",
 		Builder:      input.Builder,
 		ExpiresAfter: input.ExpiresAfter,
-		VaultAddr:    input.VaultAddr,
+		OnBehalfOf:   input.OnBehalfOf,
 		DryRun:       input.DryRun,
 	})
 }
@@ -439,19 +446,19 @@ func (e *Executor) PlaceOrder(ctx context.Context, input PlaceOrderInput) (*Plac
 	// 7. Generate nonce and sign.
 	nonce := time.Now().UnixMilli()
 
-	var vaultAddr *common.Address
-	if input.VaultAddr != "" {
-		a := common.HexToAddress(input.VaultAddr)
-		vaultAddr = &a
+	var onBehalfOf *common.Address
+	if input.OnBehalfOf != "" {
+		a := common.HexToAddress(input.OnBehalfOf)
+		onBehalfOf = &a
 	}
 
-	sig, err := e.signer.SignL1Action(action, nonce, vaultAddr, input.ExpiresAfter, e.mainnet)
+	sig, err := e.signer.SignL1Action(action, nonce, onBehalfOf, input.ExpiresAfter, e.mainnet)
 	if err != nil {
 		return nil, err
 	}
 
 	// 8. Send to exchange.
-	resp, err := e.client.PostExchange(ctx, action, nonce, sigToWire(sig), input.VaultAddr, input.ExpiresAfter)
+	resp, err := e.client.PostExchange(ctx, action, nonce, sigToWire(sig), input.OnBehalfOf, input.ExpiresAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -464,7 +471,7 @@ func (e *Executor) PlaceOrder(ctx context.Context, input PlaceOrderInput) (*Plac
 }
 
 // CancelOrders cancels orders by OID.
-func (e *Executor) CancelOrders(ctx context.Context, cancels []CancelWire, vaultAddr string, dryRun bool, expiresAfter *int64) (json.RawMessage, error) {
+func (e *Executor) CancelOrders(ctx context.Context, cancels []CancelWire, onBehalfOf string, dryRun bool, expiresAfter *int64) (json.RawMessage, error) {
 	action := BuildCancelAction(cancels)
 
 	if dryRun {
@@ -473,22 +480,22 @@ func (e *Executor) CancelOrders(ctx context.Context, cancels []CancelWire, vault
 
 	nonce := time.Now().UnixMilli()
 
-	var vault *common.Address
-	if vaultAddr != "" {
-		a := common.HexToAddress(vaultAddr)
-		vault = &a
+	var onBehalfOfAddr *common.Address
+	if onBehalfOf != "" {
+		a := common.HexToAddress(onBehalfOf)
+		onBehalfOfAddr = &a
 	}
 
-	sig, err := e.signer.SignL1Action(action, nonce, vault, expiresAfter, e.mainnet)
+	sig, err := e.signer.SignL1Action(action, nonce, onBehalfOfAddr, expiresAfter, e.mainnet)
 	if err != nil {
 		return nil, err
 	}
 
-	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), vaultAddr, expiresAfter)
+	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), onBehalfOf, expiresAfter)
 }
 
 // CancelByCloid cancels orders by client order ID.
-func (e *Executor) CancelByCloid(ctx context.Context, cancels []CancelByCloidWire, vaultAddr string, dryRun bool, expiresAfter *int64) (json.RawMessage, error) {
+func (e *Executor) CancelByCloid(ctx context.Context, cancels []CancelByCloidWire, onBehalfOf string, dryRun bool, expiresAfter *int64) (json.RawMessage, error) {
 	action := BuildCancelByCloidAction(cancels)
 
 	if dryRun {
@@ -497,18 +504,18 @@ func (e *Executor) CancelByCloid(ctx context.Context, cancels []CancelByCloidWir
 
 	nonce := time.Now().UnixMilli()
 
-	var vault *common.Address
-	if vaultAddr != "" {
-		a := common.HexToAddress(vaultAddr)
-		vault = &a
+	var onBehalfOfAddr *common.Address
+	if onBehalfOf != "" {
+		a := common.HexToAddress(onBehalfOf)
+		onBehalfOfAddr = &a
 	}
 
-	sig, err := e.signer.SignL1Action(action, nonce, vault, expiresAfter, e.mainnet)
+	sig, err := e.signer.SignL1Action(action, nonce, onBehalfOfAddr, expiresAfter, e.mainnet)
 	if err != nil {
 		return nil, err
 	}
 
-	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), vaultAddr, expiresAfter)
+	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), onBehalfOf, expiresAfter)
 }
 
 // UpdateLeverage sets leverage and margin mode for a coin.
@@ -531,18 +538,18 @@ func (e *Executor) UpdateLeverage(ctx context.Context, input UpdateLeverageInput
 
 	nonce := time.Now().UnixMilli()
 
-	var vault *common.Address
-	if input.VaultAddr != "" {
-		a := common.HexToAddress(input.VaultAddr)
-		vault = &a
+	var onBehalfOfAddr *common.Address
+	if input.OnBehalfOf != "" {
+		a := common.HexToAddress(input.OnBehalfOf)
+		onBehalfOfAddr = &a
 	}
 
-	sig, err := e.signer.SignL1Action(action, nonce, vault, nil, e.mainnet)
+	sig, err := e.signer.SignL1Action(action, nonce, onBehalfOfAddr, nil, e.mainnet)
 	if err != nil {
 		return nil, err
 	}
 
-	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), input.VaultAddr, nil)
+	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), input.OnBehalfOf, nil)
 }
 
 // UpdateIsolatedMargin adjusts isolated margin for a position.
@@ -572,18 +579,18 @@ func (e *Executor) UpdateIsolatedMargin(ctx context.Context, input UpdateIsolate
 
 	nonce := time.Now().UnixMilli()
 
-	var vault *common.Address
-	if input.VaultAddr != "" {
-		a := common.HexToAddress(input.VaultAddr)
-		vault = &a
+	var onBehalfOfAddr *common.Address
+	if input.OnBehalfOf != "" {
+		a := common.HexToAddress(input.OnBehalfOf)
+		onBehalfOfAddr = &a
 	}
 
-	sig, err := e.signer.SignL1Action(action, nonce, vault, nil, e.mainnet)
+	sig, err := e.signer.SignL1Action(action, nonce, onBehalfOfAddr, nil, e.mainnet)
 	if err != nil {
 		return nil, err
 	}
 
-	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), input.VaultAddr, nil)
+	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), input.OnBehalfOf, nil)
 }
 
 // ModifyOrder modifies an existing order.
@@ -639,18 +646,18 @@ func (e *Executor) ModifyOrder(ctx context.Context, input ModifyOrderInput) (*Mo
 
 	nonce := time.Now().UnixMilli()
 
-	var vault *common.Address
-	if input.VaultAddr != "" {
-		a := common.HexToAddress(input.VaultAddr)
-		vault = &a
+	var onBehalfOfAddr *common.Address
+	if input.OnBehalfOf != "" {
+		a := common.HexToAddress(input.OnBehalfOf)
+		onBehalfOfAddr = &a
 	}
 
-	sig, err := e.signer.SignL1Action(action, nonce, vault, input.ExpiresAfter, e.mainnet)
+	sig, err := e.signer.SignL1Action(action, nonce, onBehalfOfAddr, input.ExpiresAfter, e.mainnet)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := e.client.PostExchange(ctx, action, nonce, sigToWire(sig), input.VaultAddr, input.ExpiresAfter)
+	resp, err := e.client.PostExchange(ctx, action, nonce, sigToWire(sig), input.OnBehalfOf, input.ExpiresAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -662,25 +669,31 @@ func (e *Executor) ModifyOrder(ctx context.Context, input ModifyOrderInput) (*Mo
 }
 
 // PlaceBatchOrders signs and sends a pre-built OrderAction for batch order placement.
-func (e *Executor) PlaceBatchOrders(ctx context.Context, action *OrderAction, vaultAddr string, expiresAfter *int64) (json.RawMessage, error) {
+func (e *Executor) PlaceBatchOrders(ctx context.Context, action *OrderAction, onBehalfOf string, expiresAfter *int64) (json.RawMessage, error) {
 	nonce := time.Now().UnixMilli()
 
-	var vault *common.Address
-	if vaultAddr != "" {
-		a := common.HexToAddress(vaultAddr)
-		vault = &a
+	var onBehalfOfAddr *common.Address
+	if onBehalfOf != "" {
+		a := common.HexToAddress(onBehalfOf)
+		onBehalfOfAddr = &a
 	}
 
-	sig, err := e.signer.SignL1Action(action, nonce, vault, expiresAfter, e.mainnet)
+	sig, err := e.signer.SignL1Action(action, nonce, onBehalfOfAddr, expiresAfter, e.mainnet)
 	if err != nil {
 		return nil, err
 	}
 
-	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), vaultAddr, expiresAfter)
+	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), onBehalfOf, expiresAfter)
 }
 
 // ScheduleCancel sets or clears the dead man's switch for order cancellation.
 func (e *Executor) ScheduleCancel(ctx context.Context, input ScheduleCancelInput) (json.RawMessage, error) {
+	if input.OnBehalfOf != "" {
+		return nil, output.NewCLIError(output.ErrValidation, "on-behalf-of is not supported for schedule-cancel").
+			WithDetails("on_behalf_of", input.OnBehalfOf).
+			WithDetails("hint", "schedule-cancel always applies to the signing wallet")
+	}
+
 	action := BuildScheduleCancelAction(input.Time)
 
 	if input.DryRun {
@@ -689,7 +702,7 @@ func (e *Executor) ScheduleCancel(ctx context.Context, input ScheduleCancelInput
 
 	nonce := time.Now().UnixMilli()
 
-	// ScheduleCancel does not support vault addresses — the Hyperliquid API
+	// ScheduleCancel does not support on-behalf-of contexts — the Hyperliquid API
 	// applies the dead man's switch to the signing wallet only.
 	sig, err := e.signer.SignL1Action(action, nonce, nil, nil, e.mainnet)
 	if err != nil {
@@ -714,6 +727,7 @@ func (e *Executor) USDClassTransfer(ctx context.Context, input USDClassTransferI
 		nonce,
 		"HyperliquidTransaction:UsdClassTransfer",
 		usdClassTransferSignTypes,
+		input.OnBehalfOf,
 		input.DryRun,
 	)
 }
@@ -737,6 +751,7 @@ func (e *Executor) Withdraw3(ctx context.Context, input Withdraw3Input) (json.Ra
 		nonce,
 		"HyperliquidTransaction:Withdraw",
 		withdrawSignTypes,
+		input.OnBehalfOf,
 		input.DryRun,
 	)
 }
@@ -756,6 +771,7 @@ func (e *Executor) ClassTransfer(ctx context.Context, input ClassTransferInput) 
 		nonce,
 		"HyperliquidTransaction:UsdClassTransfer",
 		usdClassTransferSignTypes,
+		input.OnBehalfOf,
 		input.DryRun,
 	)
 }
@@ -782,6 +798,7 @@ func (e *Executor) SpotSend(ctx context.Context, input SpotSendInput) (json.RawM
 		nonce,
 		"HyperliquidTransaction:SpotSend",
 		spotSendSignTypes,
+		input.OnBehalfOf,
 		input.DryRun,
 	)
 }
@@ -801,6 +818,7 @@ func (e *Executor) ApproveAgent(ctx context.Context, input ApproveAgentInput) (j
 		nonce,
 		"HyperliquidTransaction:ApproveAgent",
 		approveAgentSignTypes,
+		input.OnBehalfOf,
 		input.DryRun,
 	)
 }
@@ -829,6 +847,7 @@ func (e *Executor) UserSetAbstraction(ctx context.Context, input UserSetAbstract
 		nonce,
 		"HyperliquidTransaction:UserSetAbstraction",
 		userSetAbstractionSignTypes,
+		input.OnBehalfOf,
 		input.DryRun,
 	)
 }
@@ -839,8 +858,16 @@ func (e *Executor) executeUserAction(
 	nonce int64,
 	typeName string,
 	typeFields []apitypes.Type,
+	onBehalfOf string,
 	dryRun bool,
 ) (json.RawMessage, error) {
+	if onBehalfOf != "" {
+		return nil, output.NewCLIError(output.ErrValidation, "on-behalf-of is not supported for user-signed actions").
+			WithDetails("on_behalf_of", onBehalfOf).
+			WithDetails("action", typeName).
+			WithDetails("hint", "remove --on-behalf-of for account commands")
+	}
+
 	actionMap, err := userActionMap(action)
 	if err != nil {
 		return nil, output.NewCLIError(output.ErrAPI, "failed to build action payload").

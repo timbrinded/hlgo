@@ -133,7 +133,7 @@ type SpotSendAction struct {
 	Time        int64  `msgpack:"time" json:"time"`
 }
 
-// ApproveAgentAction approves an agent wallet for trading on behalf of the master wallet.
+// ApproveAgentAction approves an agent wallet for trading on behalf of an account.
 type ApproveAgentAction struct {
 	Type         string `msgpack:"type" json:"type"`
 	AgentAddress string `msgpack:"agentAddress" json:"agentAddress"`

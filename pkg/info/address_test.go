@@ -42,11 +42,11 @@ func TestResolveUserAddress_ExplicitInvalid(t *testing.T) {
 	}
 }
 
-func TestResolveUserAddress_FromAgentKey(t *testing.T) {
+func TestResolveUserAddress_FromPrivateKey(t *testing.T) {
 	// Use the well-known test key.
-	t.Setenv("TEST_AGENT_KEY", "0x0123456789012345678901234567890123456789012345678901234567890123")
+	t.Setenv("TEST_PRIVATE_KEY", "0x0123456789012345678901234567890123456789012345678901234567890123")
 
-	cfg := &config.Config{AgentKeyEnv: "TEST_AGENT_KEY"}
+	cfg := &config.Config{PrivateKeyEnv: "TEST_PRIVATE_KEY"}
 	addr, err := ResolveUserAddress("", cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -57,9 +57,9 @@ func TestResolveUserAddress_FromAgentKey(t *testing.T) {
 }
 
 func TestResolveUserAddress_NoAddressAvailable(t *testing.T) {
-	t.Setenv("HL_AGENT_KEY", "")
+	t.Setenv("HL_PRIVATE_KEY", "")
 
-	cfg := &config.Config{AgentKeyEnv: "HL_AGENT_KEY"}
+	cfg := &config.Config{PrivateKeyEnv: "HL_PRIVATE_KEY"}
 	_, err := ResolveUserAddress("", cfg)
 	if err == nil {
 		t.Fatal("expected error when no address available")

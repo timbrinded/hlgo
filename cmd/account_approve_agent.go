@@ -15,20 +15,25 @@ func newAccountApproveAgentCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "approve-agent",
 		Short: "Approve or revoke an agent wallet",
-		Long: `Approve an agent address to trade on behalf of the master wallet.
+		Long: `Approve an agent address to trade on behalf of your account.
 
 Note: Hyperliquid may charge an activation fee when first approving an agent.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			agent, _ := cmd.Flags().GetString("agent")   //nolint:errcheck // known flag
-			name, _ := cmd.Flags().GetString("name")     //nolint:errcheck // known flag
-			revoke, _ := cmd.Flags().GetBool("revoke")   //nolint:errcheck // known flag
-			confirm, _ := cmd.Flags().GetBool("confirm") //nolint:errcheck // known flag
-			yes, _ := cmd.Flags().GetBool("yes")         //nolint:errcheck // known flag
+			agent, _ := cmd.Flags().GetString("agent")             //nolint:errcheck // known flag
+			name, _ := cmd.Flags().GetString("name")               //nolint:errcheck // known flag
+			revoke, _ := cmd.Flags().GetBool("revoke")             //nolint:errcheck // known flag
+			confirm, _ := cmd.Flags().GetBool("confirm")           //nolint:errcheck // known flag
+			yes, _ := cmd.Flags().GetBool("yes")                   //nolint:errcheck // known flag
+			onBehalfOf, _ := cmd.Flags().GetString("on-behalf-of") //nolint:errcheck // known flag
 
 			if !common.IsHexAddress(agent) {
 				return output.NewCLIError(output.ErrValidation, "invalid agent address").
 					WithDetails("agent", agent)
+			}
+			if onBehalfOf != "" && !common.IsHexAddress(onBehalfOf) {
+				return output.NewCLIError(output.ErrValidation, "invalid on-behalf-of address").
+					WithDetails("on_behalf_of", onBehalfOf)
 			}
 
 			agentName := strings.TrimSpace(name)
@@ -47,7 +52,7 @@ Note: Hyperliquid may charge an activation fee when first approving an agent.`,
 					WithDetails("max_length", 16)
 			}
 
-			exec, err := buildMasterExecutor(cfg)
+			exec, err := buildExecutor(cfg)
 			if err != nil {
 				return err
 			}
@@ -55,6 +60,7 @@ Note: Hyperliquid may charge an activation fee when first approving an agent.`,
 			raw, err := exec.ApproveAgent(cmd.Context(), exchange.ApproveAgentInput{
 				AgentAddress: strings.ToLower(agent),
 				AgentName:    agentName,
+				OnBehalfOf:   onBehalfOf,
 				DryRun:       cfg.DryRun,
 			})
 			if err != nil {
@@ -67,6 +73,7 @@ Note: Hyperliquid may charge an activation fee when first approving an agent.`,
 
 	cmd.Flags().String("agent", "", "agent wallet address")
 	cmd.Flags().String("name", "", "optional agent label")
+	cmd.Flags().String("on-behalf-of", "", "account address to act on behalf of")
 	cmd.Flags().Bool("revoke", false, "revoke agent by setting an empty label")
 	cmd.Flags().Bool("confirm", false, "confirm execution for revoke flow")
 	cmd.Flags().Bool("yes", false, "alias for --confirm")

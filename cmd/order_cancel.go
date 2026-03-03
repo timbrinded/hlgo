@@ -23,7 +23,7 @@ func newOrderCancelCmd() *cobra.Command {
 			coin, _ := cmd.Flags().GetString("coin")                     //nolint:errcheck // known flag
 			oidStr, _ := cmd.Flags().GetString("oid")                    //nolint:errcheck // known flag
 			cloidStr, _ := cmd.Flags().GetString("cloid")                //nolint:errcheck // known flag
-			vault, _ := cmd.Flags().GetString("vault")                   //nolint:errcheck // known flag
+			onBehalfOf, _ := cmd.Flags().GetString("on-behalf-of")       //nolint:errcheck // known flag
 			expiresAfterStr, _ := cmd.Flags().GetString("expires-after") //nolint:errcheck // known flag
 
 			// Mutual exclusion: exactly one of --oid or --cloid.
@@ -39,9 +39,9 @@ func newOrderCancelCmd() *cobra.Command {
 				return err
 			}
 
-			if vault != "" && !common.IsHexAddress(vault) {
-				return output.NewCLIError(output.ErrValidation, "invalid vault address").
-					WithDetails("vault", vault)
+			if onBehalfOf != "" && !common.IsHexAddress(onBehalfOf) {
+				return output.NewCLIError(output.ErrValidation, "invalid on-behalf-of address").
+					WithDetails("on_behalf_of", onBehalfOf)
 			}
 
 			var expiresAfter *int64
@@ -65,7 +65,7 @@ func newOrderCancelCmd() *cobra.Command {
 
 				result, err := exec.CancelByCloid(cmd.Context(), []exchange.CancelByCloidWire{
 					{Asset: assetID, Cloid: cloidStr},
-				}, vault, cfg.DryRun, expiresAfter)
+				}, onBehalfOf, cfg.DryRun, expiresAfter)
 				if err != nil {
 					return err
 				}
@@ -86,7 +86,7 @@ func newOrderCancelCmd() *cobra.Command {
 
 			result, err := exec.CancelOrders(cmd.Context(), []exchange.CancelWire{
 				{A: assetID, O: oid},
-			}, vault, cfg.DryRun, expiresAfter)
+			}, onBehalfOf, cfg.DryRun, expiresAfter)
 			if err != nil {
 				return err
 			}
@@ -97,7 +97,7 @@ func newOrderCancelCmd() *cobra.Command {
 	cmd.Flags().String("coin", "", "coin name (required for asset ID resolution)")
 	cmd.Flags().String("oid", "", "order ID to cancel")
 	cmd.Flags().String("cloid", "", "client order ID to cancel")
-	cmd.Flags().String("vault", "", "vault address")
+	cmd.Flags().String("on-behalf-of", "", "account address to act on behalf of")
 	cmd.Flags().String("expires-after", "", "expiry timestamp (Unix ms or ISO 8601)")
 
 	//nolint:errcheck // MarkFlagRequired on known flags never fails
@@ -113,13 +113,22 @@ func newOrderCancelAllCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
 			coin, _ := cmd.Flags().GetString("coin")                     //nolint:errcheck // known flag
-			vault, _ := cmd.Flags().GetString("vault")                   //nolint:errcheck // known flag
+			onBehalfOf, _ := cmd.Flags().GetString("on-behalf-of")       //nolint:errcheck // known flag
 			expiresAfterStr, _ := cmd.Flags().GetString("expires-after") //nolint:errcheck // known flag
 
+			if onBehalfOf != "" && !common.IsHexAddress(onBehalfOf) {
+				return output.NewCLIError(output.ErrValidation, "invalid on-behalf-of address").
+					WithDetails("on_behalf_of", onBehalfOf)
+			}
+
 			// Resolve user address for fetching open orders.
-			addr, err := info.ResolveUserAddress("", cfg)
-			if err != nil {
-				return err
+			addr := onBehalfOf
+			if addr == "" {
+				var err error
+				addr, err = info.ResolveUserAddress("", cfg)
+				if err != nil {
+					return err
+				}
 			}
 
 			// Fetch all open orders.
@@ -143,11 +152,6 @@ func newOrderCancelAllCmd() *cobra.Command {
 			exec, err := buildExecutor(cfg)
 			if err != nil {
 				return err
-			}
-
-			if vault != "" && !common.IsHexAddress(vault) {
-				return output.NewCLIError(output.ErrValidation, "invalid vault address").
-					WithDetails("vault", vault)
 			}
 
 			var expiresAfter *int64
@@ -186,7 +190,7 @@ func newOrderCancelAllCmd() *cobra.Command {
 				}), nil)
 			}
 
-			result, err := exec.CancelOrders(cmd.Context(), cancels, vault, cfg.DryRun, expiresAfter)
+			result, err := exec.CancelOrders(cmd.Context(), cancels, onBehalfOf, cfg.DryRun, expiresAfter)
 			if err != nil {
 				return err
 			}
@@ -195,7 +199,7 @@ func newOrderCancelAllCmd() *cobra.Command {
 	}
 
 	cmd.Flags().String("coin", "", "only cancel orders for this coin")
-	cmd.Flags().String("vault", "", "vault address")
+	cmd.Flags().String("on-behalf-of", "", "account address to act on behalf of")
 	cmd.Flags().String("expires-after", "", "expiry timestamp (Unix ms or ISO 8601)")
 
 	return cmd

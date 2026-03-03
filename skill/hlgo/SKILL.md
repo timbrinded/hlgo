@@ -48,13 +48,13 @@ hlgo info open-orders --testnet --format json
 |---|---|---|---|
 | `info` | Market and account reads | None | No signing |
 | `agent snapshot/pnl` | Composed read workflows | None | No signing |
-| `agent bracket` | Entry + TP + SL grouped order | Agent (`agent_key_env`) | L1 phantom-agent |
-| `order` | Order lifecycle (place, cancel, modify, batch) | Agent (`agent_key_env`) | L1 phantom-agent |
-| `position` | Leverage and margin changes | Agent (`agent_key_env`) | L1 phantom-agent |
-| `account` | Transfers, withdrawals, agent approval | Master (`master_key_env`) | User-signed |
+| `agent bracket` | Entry + TP + SL grouped order | Configured key (`private_key_env`) | L1 phantom-agent |
+| `order` | Order lifecycle (place, cancel, modify, batch) | Configured key (`private_key_env`) | L1 phantom-agent |
+| `position` | Leverage and margin changes | Configured key (`private_key_env`) | L1 phantom-agent |
+| `account` | Transfers, withdrawals, agent approval | Configured key (`private_key_env`) | User-signed |
 | `config` / `version` | Setup and environment checks | None | No signing |
 
-Pick the wrong wallet and signing fails silently or with `SIGNING_ERROR`. When in doubt, check the table.
+Pick the wrong command/signing path and requests can fail with `SIGNING_ERROR` or `VALIDATION_ERROR`. When in doubt, check the table.
 
 ## Operating Rules
 
@@ -85,6 +85,6 @@ Load only the reference needed for the current task:
 ## Completion Checklist
 
 - Document command + required flags + example.
-- Confirm whether the command uses agent-wallet or master-wallet signing (check table above).
+- Confirm whether the command uses L1 phantom-agent or user-signed flow (check table above).
 - Include a `--dry-run` step for mutating actions unless explicitly told to execute live.
 - Include one or more post-mutation verification commands.

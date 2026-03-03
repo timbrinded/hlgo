@@ -8,7 +8,7 @@ func newAccountCmd() *cobra.Command {
 		Short: "Account transfers, withdrawals, and agent management",
 		Long: `Transfer USDC between spot and perp, withdraw to Arbitrum, manage agent
 wallet approvals, and perform cross-account transfers. Account commands
-sign with the master wallet via the user-signed path (chain ID 421614).`,
+sign with the configured private key via the user-signed path (chain ID 421614).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},

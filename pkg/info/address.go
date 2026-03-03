@@ -16,7 +16,7 @@ var ethAddrRegex = regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
 //
 // Priority:
 //  1. Explicit address argument (validated for 0x + 40 hex chars)
-//  2. Agent wallet derived from config's agent key env var
+//  2. Wallet derived from config's private key env var
 //  3. Error if neither is available
 func ResolveUserAddress(explicitAddr string, cfg *config.Config) (string, error) {
 	if explicitAddr != "" {
@@ -28,10 +28,10 @@ func ResolveUserAddress(explicitAddr string, cfg *config.Config) (string, error)
 		return explicitAddr, nil
 	}
 
-	keyHex := os.Getenv(cfg.AgentKeyEnv)
+	keyHex := os.Getenv(cfg.PrivateKeyEnv)
 	if keyHex == "" {
-		return "", output.NewCLIError(output.ErrConfig, "no address available: provide --address or set "+cfg.AgentKeyEnv).
-			WithDetails("agent_key_env", cfg.AgentKeyEnv)
+		return "", output.NewCLIError(output.ErrConfig, "no address available: provide --address or set "+cfg.PrivateKeyEnv).
+			WithDetails("private_key_env", cfg.PrivateKeyEnv)
 	}
 
 	s, err := signer.NewSigner(keyHex)

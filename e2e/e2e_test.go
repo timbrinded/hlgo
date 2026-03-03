@@ -38,8 +38,8 @@ func TestMain(m *testing.M) {
 	if os.Getenv("HL_CONFIG") == "" {
 		_ = os.Setenv("HL_CONFIG", filepath.Join(dir, "e2e-config.yaml"))
 	}
-	if os.Getenv("HL_AGENT_KEY") == "" {
-		_ = os.Setenv("HL_AGENT_KEY", e2eTestPrivateKey)
+	if os.Getenv("HL_PRIVATE_KEY") == "" {
+		_ = os.Setenv("HL_PRIVATE_KEY", e2eTestPrivateKey)
 	}
 
 	os.Exit(m.Run())

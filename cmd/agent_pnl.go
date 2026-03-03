@@ -232,7 +232,7 @@ func newAgentPnlCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().String("address", "", "user address (default: derived from agent wallet)")
+	cmd.Flags().String("address", "", "user address (default: derived from configured private key)")
 	cmd.Flags().Int("lookback-hours", 24, "lookback window in hours for realized/funding attribution")
 	cmd.Flags().Bool("aggregate-fills", false, "request aggregateByTime for user fills endpoint")
 	return cmd

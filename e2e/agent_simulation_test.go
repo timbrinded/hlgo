@@ -18,14 +18,12 @@ import (
 const agentSimulationTimeout = 3 * time.Minute
 
 func TestE2E_AgentSimulation(t *testing.T) {
-	agentKey := strings.TrimSpace(os.Getenv("HL_TEST_AGENT_KEY"))
-	masterKey := strings.TrimSpace(os.Getenv("HL_TEST_MASTER_KEY"))
-	if agentKey == "" || masterKey == "" {
-		t.Skip("skipping agent simulation: set HL_TEST_AGENT_KEY and HL_TEST_MASTER_KEY")
+	privateKey := strings.TrimSpace(os.Getenv("HL_TEST_PRIVATE_KEY"))
+	if privateKey == "" {
+		t.Skip("skipping agent simulation: set HL_TEST_PRIVATE_KEY")
 	}
 
-	t.Setenv("HL_AGENT_KEY", agentKey)
-	t.Setenv("HL_MASTER_KEY", masterKey)
+	t.Setenv("HL_PRIVATE_KEY", privateKey)
 
 	start := time.Now()
 	assertWithinTimeout := func(step string) {

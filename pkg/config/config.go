@@ -16,10 +16,9 @@ const DefaultConfigPath = "~/.hlgo/config.yaml"
 // Config holds all resolved configuration for an hlgo invocation.
 type Config struct {
 	// Persisted fields (written to config file)
-	AgentKeyEnv  string `mapstructure:"agent_key_env"  yaml:"agent_key_env"`
-	MasterKeyEnv string `mapstructure:"master_key_env" yaml:"master_key_env"`
-	DefaultDex   string `mapstructure:"default_dex"    yaml:"default_dex"`
-	MetadataTTL  int    `mapstructure:"metadata_ttl"   yaml:"metadata_ttl"`
+	PrivateKeyEnv string `mapstructure:"private_key_env" yaml:"private_key_env"`
+	DefaultDex    string `mapstructure:"default_dex"     yaml:"default_dex"`
+	MetadataTTL   int    `mapstructure:"metadata_ttl"    yaml:"metadata_ttl"`
 
 	// Runtime fields (resolved from flags/env, never persisted)
 	Testnet bool   `mapstructure:"-" yaml:"-"`
@@ -81,8 +80,7 @@ func Load(v *viper.Viper) (*Config, error) {
 
 // setDefaults registers default values for all config keys.
 func setDefaults(v *viper.Viper) {
-	v.SetDefault("agent_key_env", "HL_AGENT_KEY")
-	v.SetDefault("master_key_env", "HL_MASTER_KEY")
+	v.SetDefault("private_key_env", "HL_PRIVATE_KEY")
 	v.SetDefault("default_dex", "")
 	v.SetDefault("metadata_ttl", 300)
 }
