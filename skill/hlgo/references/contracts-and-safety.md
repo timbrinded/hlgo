@@ -32,21 +32,23 @@
 
 ## Delegated Account Context (`--on-behalf-of`)
 
-An approved agent can operate on another account's behalf using `--on-behalf-of <address>`.
+`--on-behalf-of <address>` is an account-context override used only where commands must read open-order state before acting.
 
-**Supported** — L1 phantom-agent commands:
-- `order place`, `order market`, `order cancel`, `order cancel-all`, `order modify`, `order batch`
+**Supported**:
+- `order cancel-all`
+- `order modify` (for open-order backfill lookups)
+
+**Not supported**:
+- `order place`, `order market`, `order cancel`, `order batch`
 - `position leverage`, `position margin`
 - `agent bracket`
-
-**Not supported** — these reject `--on-behalf-of` with `VALIDATION_ERROR`:
-- All `account` commands (transfer, withdraw, send-asset, approve-agent, set-abstraction, class-transfer) — these use the user-signed path, which does not support delegation.
-- `order schedule-cancel` — the dead man's switch always applies to the signing wallet only.
+- `order schedule-cancel`
+- all `account` commands (transfer, withdraw, send-asset, approve-agent, set-abstraction, class-transfer)
 
 **Behaviour when set:**
-- The action is signed by the configured private key but executed in the context of the `--on-behalf-of` account.
-- `cancel-all` and `modify` also query open orders from the `--on-behalf-of` address (not the signer's address).
-- The signer must be an approved agent for the target account, or the exchange will reject the request.
+- `cancel-all` and `modify` query open orders from the `--on-behalf-of` address (not the signer's derived address).
+- Unsupported commands fail fast instead of silently accepting a no-op flag.
+- For ongoing account context, configure `account_address` and use `--address` on read commands when needed.
 
 ## Precision and Serialization Rules
 

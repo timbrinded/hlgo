@@ -89,6 +89,7 @@ func TestConfigInit_CustomValues(t *testing.T) {
 		"config", "init",
 		"--config", cfgPath,
 		"--private-key-env", "CUSTOM_KEY",
+		"--account-address", "0x1111111111111111111111111111111111111111",
 		"--default-dex", "xyz",
 		"--metadata-ttl", "60",
 	})
@@ -101,6 +102,9 @@ func TestConfigInit_CustomValues(t *testing.T) {
 	content := string(data)
 	if !strings.Contains(content, "CUSTOM_KEY") {
 		t.Error("custom private key env not written")
+	}
+	if !strings.Contains(content, "account_address: 0x1111111111111111111111111111111111111111") {
+		t.Error("account_address not written")
 	}
 }
 
@@ -124,7 +128,7 @@ func TestConfigInit_WarnsOnMissingEnv(t *testing.T) {
 func TestConfigShow_Output(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
-	os.WriteFile(cfgPath, []byte("private_key_env: TEST_KEY\nmetadata_ttl: 120\n"), 0600)
+	os.WriteFile(cfgPath, []byte("private_key_env: TEST_KEY\naccount_address: 0x1111111111111111111111111111111111111111\nmetadata_ttl: 120\n"), 0600)
 	t.Setenv("TEST_KEY", "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
 
 	root := NewRootCommand(BuildInfo{Version: "test"})
@@ -143,6 +147,9 @@ func TestConfigShow_Output(t *testing.T) {
 
 	if out["private_key_set"] != true {
 		t.Error("private_key_set should be true")
+	}
+	if out["account_address"] != "0x1111111111111111111111111111111111111111" {
+		t.Errorf("account_address = %v, want configured address", out["account_address"])
 	}
 
 	preview, _ := out["private_key_preview"].(string)
@@ -241,5 +248,21 @@ func TestConfigTest_MissingEnvVar(t *testing.T) {
 	err := root.Execute()
 	if err == nil {
 		t.Fatal("expected error when private key env var is not set")
+	}
+}
+
+func TestConfigInit_InvalidAccountAddress(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	root := NewRootCommand(BuildInfo{Version: "test"})
+	root.SetArgs([]string{
+		"config", "init",
+		"--config", cfgPath,
+		"--account-address", "not-an-address",
+	})
+
+	if err := root.Execute(); err == nil {
+		t.Fatal("expected error for invalid --account-address")
 	}
 }

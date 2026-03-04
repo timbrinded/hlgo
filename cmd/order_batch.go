@@ -35,7 +35,6 @@ func newOrderBatchCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
 			filePath, _ := cmd.Flags().GetString("file")                         //nolint:errcheck // known flag
-			onBehalfOf, _ := cmd.Flags().GetString("on-behalf-of")               //nolint:errcheck // known flag
 			builderAddr, _ := cmd.Flags().GetString("builder")                   //nolint:errcheck // known flag
 			builderFeeTenthsBp, _ := cmd.Flags().GetInt("builder-fee-tenths-bp") //nolint:errcheck // known flag
 			expiresAfterStr, _ := cmd.Flags().GetString("expires-after")         //nolint:errcheck // known flag
@@ -57,11 +56,6 @@ func newOrderBatchCmd() *cobra.Command {
 			if len(entries) == 0 {
 				return output.NewCLIError(output.ErrValidation, "batch file contains no orders").
 					WithDetails("path", filePath)
-			}
-
-			if onBehalfOf != "" && !common.IsHexAddress(onBehalfOf) {
-				return output.NewCLIError(output.ErrValidation, "invalid on-behalf-of address").
-					WithDetails("on_behalf_of", onBehalfOf)
 			}
 
 			changedBuilder := cmd.Flags().Changed("builder")
@@ -169,7 +163,7 @@ func newOrderBatchCmd() *cobra.Command {
 				return err
 			}
 
-			result, err := exec.PlaceBatchOrders(cmd.Context(), action, onBehalfOf, expiresAfter)
+			result, err := exec.PlaceBatchOrders(cmd.Context(), action, expiresAfter)
 			if err != nil {
 				return err
 			}
@@ -179,7 +173,6 @@ func newOrderBatchCmd() *cobra.Command {
 	}
 
 	cmd.Flags().String("file", "", "path to JSON batch file")
-	cmd.Flags().String("on-behalf-of", "", "account address to act on behalf of")
 	cmd.Flags().String("builder", "", "builder address for optional builder fee routing")
 	cmd.Flags().Int("builder-fee-tenths-bp", 0, "builder fee in tenths of a basis point (requires --builder)")
 	cmd.Flags().String("expires-after", "", "expiry timestamp (Unix ms or ISO 8601)")

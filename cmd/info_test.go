@@ -225,6 +225,47 @@ func TestInfoState_DryRun(t *testing.T) {
 	}
 }
 
+func TestInfoState_UsesConfiguredAccountAddress(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte("private_key_env: TEST_HL_PRIVATE_KEY\naccount_address: 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nmetadata_ttl: 300\n"), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	t.Setenv("HOME", dir)
+	t.Setenv("TEST_HL_PRIVATE_KEY", "0x0123456789012345678901234567890123456789012345678901234567890123")
+	for _, network := range []string{"mainnet", "testnet"} {
+		cacheDir := filepath.Join(dir, ".hlgo", "cache", network)
+		if err := os.MkdirAll(cacheDir, 0700); err != nil {
+			t.Fatalf("mkdir cache: %v", err)
+		}
+		now := `"2099-01-01T00:00:00Z"`
+		_ = os.WriteFile(filepath.Join(cacheDir, "meta.json"),
+			fmt.Appendf(nil, `{"timestamp":%s,"data":%s}`, now, testMetaJSON), 0600)
+		_ = os.WriteFile(filepath.Join(cacheDir, "spot_meta.json"),
+			fmt.Appendf(nil, `{"timestamp":%s,"data":%s}`, now, testSpotMetaJSON), 0600)
+	}
+
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	root := NewRootCommand(BuildInfo{Version: "test"})
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	root.SetArgs([]string{"--config", cfgPath, "info", "state", "--dry-run"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v, stderr=%s", err, stderr.String())
+	}
+
+	var req map[string]string
+	if err := json.Unmarshal(stdout.Bytes(), &req); err != nil {
+		t.Fatalf("failed to parse output: %v\nraw: %s", err, stdout.String())
+	}
+	if req["user"] != "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" {
+		t.Errorf("user = %q, want configured account_address", req["user"])
+	}
+}
+
 func TestInfoState_ExplicitAddress(t *testing.T) {
 	stdout, _, run := newTestRootWithServer(t, "")
 

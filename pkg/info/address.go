@@ -3,6 +3,7 @@ package info
 import (
 	"os"
 	"regexp"
+	"strings"
 
 	"github.com/timbrinded/hlgo/pkg/config"
 	"github.com/timbrinded/hlgo/pkg/output"
@@ -28,9 +29,21 @@ func ResolveUserAddress(explicitAddr string, cfg *config.Config) (string, error)
 		return explicitAddr, nil
 	}
 
+	if cfg != nil {
+		accountAddress := strings.TrimSpace(cfg.AccountAddress)
+		if accountAddress != "" {
+			if !ethAddrRegex.MatchString(accountAddress) {
+				return "", output.NewCLIError(output.ErrConfig, "invalid account_address in config").
+					WithDetails("account_address", cfg.AccountAddress).
+					WithDetails("hint", "set account_address to a 0x-prefixed 40-hex address")
+			}
+			return accountAddress, nil
+		}
+	}
+
 	keyHex := os.Getenv(cfg.PrivateKeyEnv)
 	if keyHex == "" {
-		return "", output.NewCLIError(output.ErrConfig, "no address available: provide --address or set "+cfg.PrivateKeyEnv).
+		return "", output.NewCLIError(output.ErrConfig, "no address available: provide --address, set account_address, or set "+cfg.PrivateKeyEnv).
 			WithDetails("private_key_env", cfg.PrivateKeyEnv)
 	}
 

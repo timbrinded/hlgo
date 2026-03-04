@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.yaml.in/yaml/v3"
@@ -40,9 +41,10 @@ stored at ~/.hlgo/config.yaml by default.`,
 // configFileData is the structure written to the YAML config file.
 // Fields mirror the persisted fields in config.Config — keep in sync.
 type configFileData struct {
-	PrivateKeyEnv string `yaml:"private_key_env"`
-	DefaultDex    string `yaml:"default_dex"`
-	MetadataTTL   int    `yaml:"metadata_ttl"`
+	PrivateKeyEnv  string `yaml:"private_key_env"`
+	AccountAddress string `yaml:"account_address"`
+	DefaultDex     string `yaml:"default_dex"`
+	MetadataTTL    int    `yaml:"metadata_ttl"`
 }
 
 // resolveConfigPath expands the default sentinel path to an absolute path.
@@ -59,10 +61,11 @@ func resolveConfigPath(flagValue string) (string, error) {
 
 func newConfigInitCmd() *cobra.Command {
 	var (
-		privateKeyEnv string
-		defaultDex    string
-		metadataTTL   int
-		force         bool
+		privateKeyEnv  string
+		accountAddress string
+		defaultDex     string
+		metadataTTL    int
+		force          bool
 	)
 
 	cmd := &cobra.Command{
@@ -85,9 +88,10 @@ an existing config unless --force is passed.`,
 			}
 
 			data := configFileData{
-				PrivateKeyEnv: privateKeyEnv,
-				DefaultDex:    defaultDex,
-				MetadataTTL:   metadataTTL,
+				PrivateKeyEnv:  privateKeyEnv,
+				AccountAddress: accountAddress,
+				DefaultDex:     defaultDex,
+				MetadataTTL:    metadataTTL,
 			}
 
 			out, err := yaml.Marshal(data)
@@ -119,9 +123,20 @@ an existing config unless --force is passed.`,
 	}
 
 	cmd.Flags().StringVar(&privateKeyEnv, "private-key-env", "HL_PRIVATE_KEY", "env var name for private key")
+	cmd.Flags().StringVar(&accountAddress, "account-address", "", "default account address for reads and account-context commands")
 	cmd.Flags().StringVar(&defaultDex, "default-dex", "", "default HIP-3 dex name")
 	cmd.Flags().IntVar(&metadataTTL, "metadata-ttl", 300, "metadata cache TTL in seconds")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing config file")
+
+	cmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+		if accountAddress == "" {
+			return nil
+		}
+		if !common.IsHexAddress(accountAddress) {
+			return fmt.Errorf("invalid --account-address: must be 0x-prefixed 40-hex address")
+		}
+		return nil
+	}
 
 	return cmd
 }
@@ -144,6 +159,7 @@ func newConfigShowCmd() *cobra.Command {
 				"config_file":     v.ConfigFileUsed(),
 				"private_key_env": cfg.PrivateKeyEnv,
 				"private_key_set": privateKeyVal != "",
+				"account_address": cfg.AccountAddress,
 				"testnet":         cfg.Testnet,
 				"format":          cfg.Format,
 				"dex":             cfg.Dex,

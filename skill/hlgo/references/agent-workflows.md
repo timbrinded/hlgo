@@ -101,37 +101,36 @@ Partial success: if some substeps fail, returns `partial: true` with an `errors[
 
 ## Delegated Trading (`--on-behalf-of`)
 
-When the configured key is an approved agent for another account, use `--on-behalf-of` to trade on that account:
+When using an approved agent/API wallet, set the target account context once (config `account_address`) and use explicit overrides only for read-dependent operations:
 
 ```bash
-VAULT="0x1234567890abcdef1234567890abcdef12345678"
+ACCOUNT_ADDRESS="0x1234567890abcdef1234567890abcdef12345678"
+
+# 0. Persist default account context for reads/lookups
+hlgo config init --account-address "$ACCOUNT_ADDRESS" --force
 
 # 1. Check the delegated account's positions
-hlgo info state --address "$VAULT" --testnet --format json
+hlgo info state --address "$ACCOUNT_ADDRESS" --testnet --format json
 
-# 2. Set leverage on the delegated account
-hlgo position leverage --coin ETH --leverage 3 --mode cross \
-  --on-behalf-of "$VAULT" --testnet --format json
-
-# 3. Dry-run an order on their behalf
+# 2. Place/adjust orders normally (agent authorization determines execution identity)
 hlgo order place --coin ETH --side buy --price 3000 --size 0.1 \
-  --on-behalf-of "$VAULT" --dry-run --testnet --format json
+  --dry-run --testnet --format json
 
-# 4. Place live
+# 3. Place live
 hlgo order place --coin ETH --side buy --price 3000 --size 0.1 \
-  --on-behalf-of "$VAULT" --testnet --format json
+  --testnet --format json
 
-# 5. Verify — open-orders uses --address for reads
-hlgo info open-orders --address "$VAULT" --testnet --format json
+# 4. Verify — open-orders uses account context reads
+hlgo info open-orders --address "$ACCOUNT_ADDRESS" --testnet --format json
 
-# 6. Cancel all on the delegated account
-hlgo order cancel-all --on-behalf-of "$VAULT" --testnet --format json
+# 5. Cancel all using an explicit account-context override
+hlgo order cancel-all --on-behalf-of "$ACCOUNT_ADDRESS" --testnet --format json
 ```
 
 Key points:
-- Read commands (`info`) use `--address` to query another account. Write commands (`order`, `position`) use `--on-behalf-of` to act on their behalf.
-- `cancel-all` and `modify` automatically query open orders from the `--on-behalf-of` address.
-- `--on-behalf-of` is **not supported** for `account` commands or `order schedule-cancel`.
+- Read commands (`info`) use `--address` (or configured `account_address`) to query account state.
+- `cancel-all` and `modify` use `--on-behalf-of` only for account-context open-order lookups.
+- `--on-behalf-of` is rejected by `account` commands and by write paths where it has no direct effect.
 
 ## CLOID Generation
 

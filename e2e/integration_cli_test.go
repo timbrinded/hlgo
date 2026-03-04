@@ -586,7 +586,6 @@ func TestIntegration_OnBehalf_AuthorizedRandomSignerFlow(t *testing.T) {
 			"--price", price,
 			"--size", "0.001",
 			"--cloid", cloid,
-			"--on-behalf-of", deployerAddr,
 		)
 		assertNoSecretLeak(t, stdout, stderr)
 		if code == 0 {
@@ -643,13 +642,13 @@ func TestIntegration_OnBehalf_AuthorizedRandomSignerFlow(t *testing.T) {
 		"--dry-run",
 	)
 	assertNoSecretLeak(t, stdout, stderr)
-	requireIntegrationExitCode(t, code, 1, stderr)
-	errObj := requireErrorCode(t, stderr, "VALIDATION_ERROR")
+	requireIntegrationExitCode(t, code, 4, stderr)
+	errObj := requireErrorCode(t, stderr, "API_ERROR")
 	msg, ok := errObj["error"].(string)
 	if !ok {
 		t.Fatalf("missing error message: %#v", errObj["error"])
 	}
-	if !strings.Contains(msg, "on-behalf-of is not supported for user-signed actions") {
+	if !strings.Contains(msg, "unknown flag") {
 		t.Fatalf("unexpected error message: %q", msg)
 	}
 
@@ -661,13 +660,13 @@ func TestIntegration_OnBehalf_AuthorizedRandomSignerFlow(t *testing.T) {
 		"--dry-run",
 	)
 	assertNoSecretLeak(t, stdout, stderr)
-	requireIntegrationExitCode(t, code, 1, stderr)
-	errObj = requireErrorCode(t, stderr, "VALIDATION_ERROR")
+	requireIntegrationExitCode(t, code, 4, stderr)
+	errObj = requireErrorCode(t, stderr, "API_ERROR")
 	msg, ok = errObj["error"].(string)
 	if !ok {
 		t.Fatalf("missing error message: %#v", errObj["error"])
 	}
-	if !strings.Contains(msg, "on-behalf-of is not supported for schedule-cancel") {
+	if !strings.Contains(msg, "unknown flag") {
 		t.Fatalf("unexpected error message: %q", msg)
 	}
 }

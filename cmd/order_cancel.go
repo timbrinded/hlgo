@@ -23,7 +23,6 @@ func newOrderCancelCmd() *cobra.Command {
 			coin, _ := cmd.Flags().GetString("coin")                     //nolint:errcheck // known flag
 			oidStr, _ := cmd.Flags().GetString("oid")                    //nolint:errcheck // known flag
 			cloidStr, _ := cmd.Flags().GetString("cloid")                //nolint:errcheck // known flag
-			onBehalfOf, _ := cmd.Flags().GetString("on-behalf-of")       //nolint:errcheck // known flag
 			expiresAfterStr, _ := cmd.Flags().GetString("expires-after") //nolint:errcheck // known flag
 
 			// Mutual exclusion: exactly one of --oid or --cloid.
@@ -37,11 +36,6 @@ func newOrderCancelCmd() *cobra.Command {
 			exec, err := buildExecutor(cfg)
 			if err != nil {
 				return err
-			}
-
-			if onBehalfOf != "" && !common.IsHexAddress(onBehalfOf) {
-				return output.NewCLIError(output.ErrValidation, "invalid on-behalf-of address").
-					WithDetails("on_behalf_of", onBehalfOf)
 			}
 
 			var expiresAfter *int64
@@ -65,7 +59,7 @@ func newOrderCancelCmd() *cobra.Command {
 
 				result, err := exec.CancelByCloid(cmd.Context(), []exchange.CancelByCloidWire{
 					{Asset: assetID, Cloid: cloidStr},
-				}, onBehalfOf, cfg.DryRun, expiresAfter)
+				}, cfg.DryRun, expiresAfter)
 				if err != nil {
 					return err
 				}
@@ -86,7 +80,7 @@ func newOrderCancelCmd() *cobra.Command {
 
 			result, err := exec.CancelOrders(cmd.Context(), []exchange.CancelWire{
 				{A: assetID, O: oid},
-			}, onBehalfOf, cfg.DryRun, expiresAfter)
+			}, cfg.DryRun, expiresAfter)
 			if err != nil {
 				return err
 			}
@@ -97,7 +91,6 @@ func newOrderCancelCmd() *cobra.Command {
 	cmd.Flags().String("coin", "", "coin name (required for asset ID resolution)")
 	cmd.Flags().String("oid", "", "order ID to cancel")
 	cmd.Flags().String("cloid", "", "client order ID to cancel")
-	cmd.Flags().String("on-behalf-of", "", "account address to act on behalf of")
 	cmd.Flags().String("expires-after", "", "expiry timestamp (Unix ms or ISO 8601)")
 
 	//nolint:errcheck // MarkFlagRequired on known flags never fails
@@ -190,7 +183,7 @@ func newOrderCancelAllCmd() *cobra.Command {
 				}), nil)
 			}
 
-			result, err := exec.CancelOrders(cmd.Context(), cancels, onBehalfOf, cfg.DryRun, expiresAfter)
+			result, err := exec.CancelOrders(cmd.Context(), cancels, cfg.DryRun, expiresAfter)
 			if err != nil {
 				return err
 			}

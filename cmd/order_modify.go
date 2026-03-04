@@ -110,7 +110,6 @@ func newOrderModifyCmd() *cobra.Command {
 				Tif:          wireTif,
 				ReduceOnly:   reduce,
 				ExpiresAfter: expiresAfter,
-				OnBehalfOf:   onBehalfOf,
 				DryRun:       cfg.DryRun,
 			})
 			if err != nil {

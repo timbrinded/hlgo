@@ -56,6 +56,40 @@ func TestResolveUserAddress_FromPrivateKey(t *testing.T) {
 	}
 }
 
+func TestResolveUserAddress_FromConfigAccountAddress(t *testing.T) {
+	cfg := &config.Config{
+		AccountAddress: "0x2222222222222222222222222222222222222222",
+		PrivateKeyEnv:  "TEST_PRIVATE_KEY",
+	}
+
+	addr, err := ResolveUserAddress("", cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if addr != "0x2222222222222222222222222222222222222222" {
+		t.Errorf("got %q, want config account address", addr)
+	}
+}
+
+func TestResolveUserAddress_InvalidConfigAccountAddress(t *testing.T) {
+	cfg := &config.Config{
+		AccountAddress: "bad-address",
+		PrivateKeyEnv:  "TEST_PRIVATE_KEY",
+	}
+
+	_, err := ResolveUserAddress("", cfg)
+	if err == nil {
+		t.Fatal("expected error for invalid config account address")
+	}
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected *output.CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrConfig {
+		t.Errorf("expected CONFIG_ERROR, got %s", cliErr.Code)
+	}
+}
+
 func TestResolveUserAddress_NoAddressAvailable(t *testing.T) {
 	t.Setenv("HL_PRIVATE_KEY", "")
 

@@ -3,7 +3,6 @@ package cmd
 import (
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
 
 	"github.com/timbrinded/hlgo/pkg/config"
@@ -19,9 +18,8 @@ func newOrderScheduleCancelCmd() *cobra.Command {
 or clear an existing schedule. Exactly one of --timeout or --clear must be provided.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			timeoutStr, _ := cmd.Flags().GetString("timeout")      //nolint:errcheck // known flag
-			clear, _ := cmd.Flags().GetBool("clear")               //nolint:errcheck // known flag
-			onBehalfOf, _ := cmd.Flags().GetString("on-behalf-of") //nolint:errcheck // known flag
+			timeoutStr, _ := cmd.Flags().GetString("timeout") //nolint:errcheck // known flag
+			clear, _ := cmd.Flags().GetBool("clear")          //nolint:errcheck // known flag
 
 			hasTimeout := cmd.Flags().Changed("timeout")
 
@@ -30,10 +28,6 @@ or clear an existing schedule. Exactly one of --timeout or --clear must be provi
 			}
 			if !hasTimeout && !clear {
 				return output.NewCLIError(output.ErrValidation, "one of --timeout or --clear is required")
-			}
-			if onBehalfOf != "" && !common.IsHexAddress(onBehalfOf) {
-				return output.NewCLIError(output.ErrValidation, "invalid on-behalf-of address").
-					WithDetails("on_behalf_of", onBehalfOf)
 			}
 
 			var cancelTime *int64
@@ -63,9 +57,8 @@ or clear an existing schedule. Exactly one of --timeout or --clear must be provi
 			}
 
 			result, err := exec.ScheduleCancel(cmd.Context(), exchange.ScheduleCancelInput{
-				Time:       cancelTime,
-				OnBehalfOf: onBehalfOf,
-				DryRun:     cfg.DryRun,
+				Time:   cancelTime,
+				DryRun: cfg.DryRun,
 			})
 			if err != nil {
 				return err
@@ -77,7 +70,6 @@ or clear an existing schedule. Exactly one of --timeout or --clear must be provi
 
 	cmd.Flags().String("timeout", "", "cancellation timeout (Go duration, e.g. 5m, 1h)")
 	cmd.Flags().Bool("clear", false, "clear existing schedule")
-	cmd.Flags().String("on-behalf-of", "", "account address to act on behalf of")
 
 	return cmd
 }

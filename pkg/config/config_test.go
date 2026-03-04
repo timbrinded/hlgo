@@ -17,6 +17,7 @@ func TestDefaults(t *testing.T) {
 		want any
 	}{
 		{"private_key_env", "HL_PRIVATE_KEY"},
+		{"account_address", ""},
 		{"default_dex", ""},
 		{"metadata_ttl", 300},
 	}
@@ -44,7 +45,7 @@ func newTestViper(configPath string) *viper.Viper {
 func TestLoad_FromFile(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
-	content := []byte("private_key_env: MY_KEY\ndefault_dex: xyz\nmetadata_ttl: 120\n")
+	content := []byte("private_key_env: MY_KEY\naccount_address: 0x1111111111111111111111111111111111111111\ndefault_dex: xyz\nmetadata_ttl: 120\n")
 	if err := os.WriteFile(cfgPath, content, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +64,9 @@ func TestLoad_FromFile(t *testing.T) {
 	}
 	if cfg.DefaultDex != "xyz" {
 		t.Errorf("DefaultDex = %q, want %q", cfg.DefaultDex, "xyz")
+	}
+	if cfg.AccountAddress != "0x1111111111111111111111111111111111111111" {
+		t.Errorf("AccountAddress = %q, want %q", cfg.AccountAddress, "0x1111111111111111111111111111111111111111")
 	}
 	if cfg.MetadataTTL != 120 {
 		t.Errorf("MetadataTTL = %d, want %d", cfg.MetadataTTL, 120)
