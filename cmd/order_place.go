@@ -37,7 +37,6 @@ func newOrderPlaceCmd() *cobra.Command {
 			tifFlag, _ := cmd.Flags().GetString("tif")                           //nolint:errcheck // known flag
 			reduce, _ := cmd.Flags().GetBool("reduce")                           //nolint:errcheck // known flag
 			cloidStr, _ := cmd.Flags().GetString("cloid")                        //nolint:errcheck // known flag
-			vault, _ := cmd.Flags().GetString("vault")                           //nolint:errcheck // known flag
 			builderAddr, _ := cmd.Flags().GetString("builder")                   //nolint:errcheck // known flag
 			builderFeeTenthsBp, _ := cmd.Flags().GetInt("builder-fee-tenths-bp") //nolint:errcheck // known flag
 			expiresAfterStr, _ := cmd.Flags().GetString("expires-after")         //nolint:errcheck // known flag
@@ -72,11 +71,6 @@ func newOrderPlaceCmd() *cobra.Command {
 			var cloid *string
 			if cloidStr != "" {
 				cloid = &cloidStr
-			}
-
-			if vault != "" && !common.IsHexAddress(vault) {
-				return output.NewCLIError(output.ErrValidation, "invalid vault address").
-					WithDetails("vault", vault)
 			}
 
 			changedBuilder := cmd.Flags().Changed("builder")
@@ -128,7 +122,6 @@ func newOrderPlaceCmd() *cobra.Command {
 				Cloid:        cloid,
 				Builder:      builder,
 				ExpiresAfter: expiresAfter,
-				VaultAddr:    vault,
 				DryRun:       cfg.DryRun,
 			})
 			if err != nil {
@@ -146,7 +139,6 @@ func newOrderPlaceCmd() *cobra.Command {
 	cmd.Flags().String("tif", "gtc", "time in force: gtc, ioc, alo")
 	cmd.Flags().Bool("reduce", false, "reduce-only order")
 	cmd.Flags().String("cloid", "", "client order ID")
-	cmd.Flags().String("vault", "", "vault address")
 	cmd.Flags().String("builder", "", "builder address for optional builder fee routing")
 	cmd.Flags().Int("builder-fee-tenths-bp", 0, "builder fee in tenths of a basis point (requires --builder)")
 	cmd.Flags().String("expires-after", "", "expiry timestamp (Unix ms or ISO 8601)")
@@ -161,10 +153,10 @@ func newOrderPlaceCmd() *cobra.Command {
 
 // buildExecutor constructs an exchange.Executor from the current config.
 func buildExecutor(cfg *config.Config) (*exchange.Executor, error) {
-	keyHex := os.Getenv(cfg.AgentKeyEnv)
+	keyHex := os.Getenv(cfg.PrivateKeyEnv)
 	if keyHex == "" {
-		return nil, output.NewCLIError(output.ErrConfig, "agent key not set").
-			WithDetails("env_var", cfg.AgentKeyEnv)
+		return nil, output.NewCLIError(output.ErrConfig, "private key not set").
+			WithDetails("env_var", cfg.PrivateKeyEnv)
 	}
 
 	s, err := signer.NewSigner(keyHex)

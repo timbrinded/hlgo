@@ -92,7 +92,7 @@ func TestGlobalFlags_Registered(t *testing.T) {
 func TestConfigLoading_InjectsContext(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
-	content := []byte("agent_key_env: TEST_AGENT_KEY\nmetadata_ttl: 60\n")
+	content := []byte("private_key_env: TEST_AGENT_KEY\nmetadata_ttl: 60\n")
 	if err := os.WriteFile(cfgPath, content, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -115,8 +115,8 @@ func TestConfigLoading_InjectsContext(t *testing.T) {
 	if gotCfg == nil {
 		t.Fatal("config not injected into context")
 	}
-	if gotCfg.AgentKeyEnv != "TEST_AGENT_KEY" {
-		t.Errorf("AgentKeyEnv = %q, want %q", gotCfg.AgentKeyEnv, "TEST_AGENT_KEY")
+	if gotCfg.PrivateKeyEnv != "TEST_AGENT_KEY" {
+		t.Errorf("PrivateKeyEnv = %q, want %q", gotCfg.PrivateKeyEnv, "TEST_AGENT_KEY")
 	}
 }
 

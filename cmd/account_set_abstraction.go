@@ -40,7 +40,7 @@ func newAccountSetAbstractionCmd() *cobra.Command {
 					WithDetails("allowed", []string{"unifiedAccount", "portfolioMargin", "disabled"})
 			}
 
-			exec, err := buildMasterExecutor(cfg)
+			exec, err := buildExecutor(cfg)
 			if err != nil {
 				return err
 			}

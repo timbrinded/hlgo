@@ -194,7 +194,7 @@ func newAgentSnapshotCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().String("address", "", "user address (default: derived from agent wallet)")
+	cmd.Flags().String("address", "", "user address (default: derived from configured private key)")
 	return cmd
 }
 

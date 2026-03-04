@@ -689,7 +689,7 @@ func TestExecutor_CancelOrders_DryRun(t *testing.T) {
 
 	result, err := exec.CancelOrders(context.Background(), []CancelWire{
 		{A: 0, O: 12345},
-	}, "", true, nil)
+	}, true, nil)
 	if err != nil {
 		t.Fatalf("CancelOrders dry-run error: %v", err)
 	}
@@ -716,7 +716,7 @@ func TestExecutor_CancelByCloid_DryRun(t *testing.T) {
 
 	result, err := exec.CancelByCloid(context.Background(), []CancelByCloidWire{
 		{Asset: 0, Cloid: "my-id"},
-	}, "", true, nil)
+	}, true, nil)
 	if err != nil {
 		t.Fatalf("CancelByCloid dry-run error: %v", err)
 	}

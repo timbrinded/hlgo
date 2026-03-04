@@ -26,9 +26,29 @@
 
 | Command Group | Wallet | Path |
 |---|---|---|
-| `order`, `position`, `agent bracket` | Agent wallet (`agent_key_env`) | L1 phantom-agent path |
-| `account` commands | Master wallet (`master_key_env`) | User-signed path |
+| `order`, `position`, `agent bracket` | Configured key (`private_key_env`) | L1 phantom-agent path |
+| `account` commands | Configured key (`private_key_env`) | User-signed path |
 | `info`, `agent snapshot`, `agent pnl`, `config`, `version` | No signing | Read/config path |
+
+## Delegated Account Context (`--on-behalf-of`)
+
+`--on-behalf-of <address>` is an account-context override used only where commands must read open-order state before acting.
+
+**Supported**:
+- `order cancel-all`
+- `order modify` (for open-order backfill lookups)
+
+**Not supported**:
+- `order place`, `order market`, `order cancel`, `order batch`
+- `position leverage`, `position margin`
+- `agent bracket`
+- `order schedule-cancel`
+- all `account` commands (transfer, withdraw, send-asset, approve-agent, set-abstraction, class-transfer)
+
+**Behaviour when set:**
+- `cancel-all` and `modify` query open orders from the `--on-behalf-of` address (not the signer's derived address).
+- Unsupported commands fail fast instead of silently accepting a no-op flag.
+- For ongoing account context, configure `account_address` and use `--address` on read commands when needed.
 
 ## Precision and Serialization Rules
 

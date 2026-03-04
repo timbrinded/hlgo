@@ -38,7 +38,7 @@ func newAccountWithdrawCmd() *cobra.Command {
 					WithDetails("value", amountStr)
 			}
 
-			exec, err := buildMasterExecutor(cfg)
+			exec, err := buildExecutor(cfg)
 			if err != nil {
 				return err
 			}

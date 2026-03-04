@@ -99,6 +99,39 @@ Output fields:
 
 Partial success: if some substeps fail, returns `partial: true` with an `errors[]` array listing each failed step, its error code, and message. Branch on the `partial` field to decide whether to proceed or abort.
 
+## Delegated Trading (`--on-behalf-of`)
+
+When using an approved agent/API wallet, set the target account context once (config `account_address`) and use explicit overrides only for read-dependent operations:
+
+```bash
+ACCOUNT_ADDRESS="0x1234567890abcdef1234567890abcdef12345678"
+
+# 0. Persist default account context for reads/lookups
+hlgo config init --account-address "$ACCOUNT_ADDRESS" --force
+
+# 1. Check the delegated account's positions
+hlgo info state --address "$ACCOUNT_ADDRESS" --testnet --format json
+
+# 2. Place/adjust orders normally (agent authorization determines execution identity)
+hlgo order place --coin ETH --side buy --price 3000 --size 0.1 \
+  --dry-run --testnet --format json
+
+# 3. Place live
+hlgo order place --coin ETH --side buy --price 3000 --size 0.1 \
+  --testnet --format json
+
+# 4. Verify — open-orders uses account context reads
+hlgo info open-orders --address "$ACCOUNT_ADDRESS" --testnet --format json
+
+# 5. Cancel all using an explicit account-context override
+hlgo order cancel-all --on-behalf-of "$ACCOUNT_ADDRESS" --testnet --format json
+```
+
+Key points:
+- Read commands (`info`) use `--address` (or configured `account_address`) to query account state.
+- `cancel-all` and `modify` use `--on-behalf-of` only for account-context open-order lookups.
+- `--on-behalf-of` is rejected by `account` commands and by write paths where it has no direct effect.
+
 ## CLOID Generation
 
 Client Order IDs (CLOIDs) are 16-byte random hex strings with `0x` prefix. Each CLOID is single-use per order.

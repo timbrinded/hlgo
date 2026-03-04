@@ -24,7 +24,6 @@ The order is placed as an IOC (immediate-or-cancel) at the slippage-adjusted pri
 			side, _ := cmd.Flags().GetString("side")                             //nolint:errcheck // known flag
 			sizeStr, _ := cmd.Flags().GetString("size")                          //nolint:errcheck // known flag
 			slippageStr, _ := cmd.Flags().GetString("slippage")                  //nolint:errcheck // known flag
-			vault, _ := cmd.Flags().GetString("vault")                           //nolint:errcheck // known flag
 			builderAddr, _ := cmd.Flags().GetString("builder")                   //nolint:errcheck // known flag
 			builderFeeTenthsBp, _ := cmd.Flags().GetInt("builder-fee-tenths-bp") //nolint:errcheck // known flag
 			expiresAfterStr, _ := cmd.Flags().GetString("expires-after")         //nolint:errcheck // known flag
@@ -33,11 +32,6 @@ The order is placed as an IOC (immediate-or-cancel) at the slippage-adjusted pri
 			if side != "buy" && side != "sell" {
 				return output.NewCLIError(output.ErrValidation, "side must be 'buy' or 'sell'").
 					WithDetails("value", side)
-			}
-
-			if vault != "" && !common.IsHexAddress(vault) {
-				return output.NewCLIError(output.ErrValidation, "invalid vault address").
-					WithDetails("vault", vault)
 			}
 
 			changedBuilder := cmd.Flags().Changed("builder")
@@ -106,7 +100,6 @@ The order is placed as an IOC (immediate-or-cancel) at the slippage-adjusted pri
 				SlippagePercent: slippageDecimal,
 				Builder:         builder,
 				ExpiresAfter:    expiresAfter,
-				VaultAddr:       vault,
 				DryRun:          cfg.DryRun,
 			})
 			if err != nil {
@@ -121,7 +114,6 @@ The order is placed as an IOC (immediate-or-cancel) at the slippage-adjusted pri
 	cmd.Flags().String("side", "", "buy or sell")
 	cmd.Flags().String("size", "", "order size")
 	cmd.Flags().String("slippage", "0.5", "slippage percentage (default 0.5%)")
-	cmd.Flags().String("vault", "", "vault address")
 	cmd.Flags().String("builder", "", "builder address for optional builder fee routing")
 	cmd.Flags().Int("builder-fee-tenths-bp", 0, "builder fee in tenths of a basis point (requires --builder)")
 	cmd.Flags().String("expires-after", "", "expiry timestamp (Unix ms or ISO 8601)")

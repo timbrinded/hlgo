@@ -308,16 +308,16 @@ func TestOrderModify_DryRun_PriceOnly(t *testing.T) {
 	}
 }
 
-func TestOrderModify_InvalidVault(t *testing.T) {
+func TestOrderModify_InvalidOnBehalfOf(t *testing.T) {
 	_, _, run := newTestRootWithServer(t, "")
 
 	err := run("order", "modify",
 		"--coin", "BTC", "--oid", "12345", "--side", "buy",
 		"--price", "50000", "--size", "0.01",
-		"--vault", "not-a-hex-address", "--dry-run",
+		"--on-behalf-of", "not-a-hex-address", "--dry-run",
 	)
 	if err == nil {
-		t.Fatal("expected error for invalid vault address")
+		t.Fatal("expected error for invalid on-behalf-of address")
 	}
 }
 
@@ -397,6 +397,19 @@ func TestOrderScheduleCancel_NeitherFlag(t *testing.T) {
 	err := run("order", "schedule-cancel", "--dry-run")
 	if err == nil {
 		t.Fatal("expected error when neither --timeout nor --clear provided")
+	}
+}
+
+func TestOrderScheduleCancel_OnBehalfOfUnsupported(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("order", "schedule-cancel",
+		"--timeout", "5m",
+		"--on-behalf-of", "0x1111111111111111111111111111111111111111",
+		"--dry-run",
+	)
+	if err == nil {
+		t.Fatal("expected validation error when on-behalf-of is used for schedule-cancel")
 	}
 }
 

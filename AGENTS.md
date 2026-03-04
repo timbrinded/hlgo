@@ -39,8 +39,8 @@
 - **Decimal string serialization:** JSON output uses string representations — `"95123.5"`, not `95123.5`. No numeric JSON fields for financial values.
 - **Nonces are millisecond timestamps**, not sequential counters. Use `time.Now().UnixMilli()`. Each nonce is single-use per signer address.
 - **Two distinct signing paths:**
-  - L1 (phantom agent): chain ID `1337`, domain `"Exchange"`, msgpack → keccak256 → EIP-712. Agent wallet signs these.
-  - User-signed: chain ID `421614` (Arbitrum Sepolia, `0x66eee` — hardcoded per Python SDK for all environments), domain `"HyperliquidSignTransaction"`, EIP-712 direct. Master wallet only.
+  - L1 (phantom agent): chain ID `1337`, domain `"Exchange"`, msgpack → keccak256 → EIP-712. Used by order, position, and agent bracket commands.
+  - User-signed: chain ID `421614` (Arbitrum Sepolia, `0x66eee` — hardcoded per Python SDK for all environments), domain `"HyperliquidSignTransaction"`, EIP-712 direct. Used by account commands.
   - Never mix these up. Commands must auto-select the correct signer based on action type.
 - **Asset ID resolution:** Perp IDs are index-based, spot IDs are `10000 + index`, HIP-3 IDs are `100000 + (dex_index × 10000) + index`. HIP-3 coins use `{dex}:{coin}` format (e.g. `xyz:XYZ100`).
 - **Tick and lot size validation happens before signing.** Perps: max 6 decimals. Spot: max 8 decimals. Price: max 5 significant figures. Validate early, fail loud.

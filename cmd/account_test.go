@@ -70,6 +70,20 @@ func TestAccountTransfer_InvalidDirection(t *testing.T) {
 	}
 }
 
+func TestAccountTransfer_OnBehalfOfUnsupported(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("account", "transfer",
+		"--amount", "1",
+		"--to-perp",
+		"--on-behalf-of", "0x1111111111111111111111111111111111111111",
+		"--dry-run",
+	)
+	if err == nil {
+		t.Fatal("expected validation error when on-behalf-of is used for user-signed action")
+	}
+}
+
 func TestAccountWithdraw_RequiresConfirm(t *testing.T) {
 	_, _, run := newTestRootWithServer(t, "")
 
@@ -243,13 +257,12 @@ func TestAccountApproveAgent_NameTooLong(t *testing.T) {
 	}
 }
 
-func TestAccountMissingMasterKey_ConfigError(t *testing.T) {
+func TestAccountMissingPrivateKey_ConfigError(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(cfgPath, []byte("agent_key_env: TEST_HL_KEY\nmaster_key_env: NOT_SET_MASTER\n"), 0600); err != nil {
+	if err := os.WriteFile(cfgPath, []byte("private_key_env: NOT_SET_PRIVATE\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("TEST_HL_KEY", "0x0123456789012345678901234567890123456789012345678901234567890123")
 
 	root := NewRootCommand(BuildInfo{Version: "test"})
 	root.SetOut(new(bytes.Buffer))
@@ -264,7 +277,7 @@ func TestAccountMissingMasterKey_ConfigError(t *testing.T) {
 
 	err := root.Execute()
 	if err == nil {
-		t.Fatal("expected config error when master key env var is missing")
+		t.Fatal("expected config error when private key env var is missing")
 	}
 
 	var cliErr *output.CLIError

@@ -27,7 +27,7 @@ func newOrderModifyCmd() *cobra.Command {
 			sizeStr, _ := cmd.Flags().GetString("size")                  //nolint:errcheck // known flag
 			tifFlag, _ := cmd.Flags().GetString("tif")                   //nolint:errcheck // known flag
 			reduce, _ := cmd.Flags().GetBool("reduce")                   //nolint:errcheck // known flag
-			vault, _ := cmd.Flags().GetString("vault")                   //nolint:errcheck // known flag
+			onBehalfOf, _ := cmd.Flags().GetString("on-behalf-of")       //nolint:errcheck // known flag
 			expiresAfterStr, _ := cmd.Flags().GetString("expires-after") //nolint:errcheck // known flag
 
 			side = strings.ToLower(side)
@@ -55,8 +55,13 @@ func newOrderModifyCmd() *cobra.Command {
 				return output.NewCLIError(output.ErrValidation, "at least one of --price or --size is required")
 			}
 
+			if onBehalfOf != "" && !common.IsHexAddress(onBehalfOf) {
+				return output.NewCLIError(output.ErrValidation, "invalid on-behalf-of address").
+					WithDetails("on_behalf_of", onBehalfOf)
+			}
+
 			if !hasPrice || !hasSize {
-				existing, err := lookupOpenOrderByOID(cmd, cfg, oid, coin)
+				existing, err := lookupOpenOrderByOID(cmd, cfg, oid, coin, onBehalfOf)
 				if err != nil {
 					return err
 				}
@@ -91,11 +96,6 @@ func newOrderModifyCmd() *cobra.Command {
 				expiresAfter = &ms
 			}
 
-			if vault != "" && !common.IsHexAddress(vault) {
-				return output.NewCLIError(output.ErrValidation, "invalid vault address").
-					WithDetails("vault", vault)
-			}
-
 			exec, err := buildExecutor(cfg)
 			if err != nil {
 				return err
@@ -110,7 +110,6 @@ func newOrderModifyCmd() *cobra.Command {
 				Tif:          wireTif,
 				ReduceOnly:   reduce,
 				ExpiresAfter: expiresAfter,
-				VaultAddr:    vault,
 				DryRun:       cfg.DryRun,
 			})
 			if err != nil {
@@ -128,7 +127,7 @@ func newOrderModifyCmd() *cobra.Command {
 	cmd.Flags().String("size", "", "new order size (optional if --price is set)")
 	cmd.Flags().String("tif", "gtc", "time in force: gtc, ioc, alo")
 	cmd.Flags().Bool("reduce", false, "reduce-only order")
-	cmd.Flags().String("vault", "", "vault address")
+	cmd.Flags().String("on-behalf-of", "", "account address to act on behalf of")
 	cmd.Flags().String("expires-after", "", "expiry timestamp (Unix ms or ISO 8601)")
 
 	for _, required := range []string{"coin", "oid", "side"} {
@@ -139,10 +138,14 @@ func newOrderModifyCmd() *cobra.Command {
 	return cmd
 }
 
-func lookupOpenOrderByOID(cmd *cobra.Command, cfg *config.Config, oid uint64, coin string) (*info.OpenOrder, error) {
-	addr, err := info.ResolveUserAddress("", cfg)
-	if err != nil {
-		return nil, err
+func lookupOpenOrderByOID(cmd *cobra.Command, cfg *config.Config, oid uint64, coin string, onBehalfOf string) (*info.OpenOrder, error) {
+	addr := onBehalfOf
+	if addr == "" {
+		var err error
+		addr, err = info.ResolveUserAddress("", cfg)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	ic := buildInfoClient(cfg)

@@ -42,7 +42,7 @@ func newInfoStateCmd() *cobra.Command {
 			return printResult(cmd, cfg, raw, result)
 		},
 	}
-	cmd.Flags().String("address", "", "user address (default: derived from agent wallet)")
+	cmd.Flags().String("address", "", "user address (default: derived from configured private key)")
 	cmd.Flags().String("dex", "", "HIP-3 perp dex name")
 	return cmd
 }
@@ -74,7 +74,7 @@ func newInfoSpotStateCmd() *cobra.Command {
 			return printResult(cmd, cfg, raw, nil)
 		},
 	}
-	cmd.Flags().String("address", "", "user address (default: derived from agent wallet)")
+	cmd.Flags().String("address", "", "user address (default: derived from configured private key)")
 	return cmd
 }
 
@@ -111,7 +111,7 @@ func newInfoOpenOrdersCmd() *cobra.Command {
 			return printResult(cmd, cfg, raw, result)
 		},
 	}
-	cmd.Flags().String("address", "", "user address (default: derived from agent wallet)")
+	cmd.Flags().String("address", "", "user address (default: derived from configured private key)")
 	cmd.Flags().String("dex", "", "HIP-3 perp dex name")
 	return cmd
 }
@@ -193,7 +193,7 @@ func newInfoFillsCmd() *cobra.Command {
 			return printResult(cmd, cfg, raw, result)
 		},
 	}
-	cmd.Flags().String("address", "", "user address (default: derived from agent wallet)")
+	cmd.Flags().String("address", "", "user address (default: derived from configured private key)")
 	cmd.Flags().String("start", "", "start time (Unix ms or ISO 8601)")
 	cmd.Flags().String("end", "", "end time (Unix ms or ISO 8601)")
 	cmd.Flags().Bool("aggregate-by-time", false, "aggregate partial fills by timestamp")
@@ -236,7 +236,7 @@ func newInfoOrderStatusCmd() *cobra.Command {
 			return printResult(cmd, cfg, raw, nil)
 		},
 	}
-	cmd.Flags().String("address", "", "user address (default: derived from agent wallet)")
+	cmd.Flags().String("address", "", "user address (default: derived from configured private key)")
 	return cmd
 }
 
@@ -267,6 +267,6 @@ func newInfoRateLimitCmd() *cobra.Command {
 			return printResult(cmd, cfg, raw, nil)
 		},
 	}
-	cmd.Flags().String("address", "", "user address (default: derived from agent wallet)")
+	cmd.Flags().String("address", "", "user address (default: derived from configured private key)")
 	return cmd
 }

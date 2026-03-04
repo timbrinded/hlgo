@@ -3,6 +3,7 @@ package info
 import (
 	"os"
 	"regexp"
+	"strings"
 
 	"github.com/timbrinded/hlgo/pkg/config"
 	"github.com/timbrinded/hlgo/pkg/output"
@@ -16,7 +17,7 @@ var ethAddrRegex = regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
 //
 // Priority:
 //  1. Explicit address argument (validated for 0x + 40 hex chars)
-//  2. Agent wallet derived from config's agent key env var
+//  2. Wallet derived from config's private key env var
 //  3. Error if neither is available
 func ResolveUserAddress(explicitAddr string, cfg *config.Config) (string, error) {
 	if explicitAddr != "" {
@@ -28,10 +29,22 @@ func ResolveUserAddress(explicitAddr string, cfg *config.Config) (string, error)
 		return explicitAddr, nil
 	}
 
-	keyHex := os.Getenv(cfg.AgentKeyEnv)
+	if cfg != nil {
+		accountAddress := strings.TrimSpace(cfg.AccountAddress)
+		if accountAddress != "" {
+			if !ethAddrRegex.MatchString(accountAddress) {
+				return "", output.NewCLIError(output.ErrConfig, "invalid account_address in config").
+					WithDetails("account_address", cfg.AccountAddress).
+					WithDetails("hint", "set account_address to a 0x-prefixed 40-hex address")
+			}
+			return accountAddress, nil
+		}
+	}
+
+	keyHex := os.Getenv(cfg.PrivateKeyEnv)
 	if keyHex == "" {
-		return "", output.NewCLIError(output.ErrConfig, "no address available: provide --address or set "+cfg.AgentKeyEnv).
-			WithDetails("agent_key_env", cfg.AgentKeyEnv)
+		return "", output.NewCLIError(output.ErrConfig, "no address available: provide --address, set account_address, or set "+cfg.PrivateKeyEnv).
+			WithDetails("private_key_env", cfg.PrivateKeyEnv)
 	}
 
 	s, err := signer.NewSigner(keyHex)

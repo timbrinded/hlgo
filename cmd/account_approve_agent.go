@@ -15,7 +15,7 @@ func newAccountApproveAgentCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "approve-agent",
 		Short: "Approve or revoke an agent wallet",
-		Long: `Approve an agent address to trade on behalf of the master wallet.
+		Long: `Approve an agent address to trade on behalf of your account.
 
 Note: Hyperliquid may charge an activation fee when first approving an agent.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -47,7 +47,7 @@ Note: Hyperliquid may charge an activation fee when first approving an agent.`,
 					WithDetails("max_length", 16)
 			}
 
-			exec, err := buildMasterExecutor(cfg)
+			exec, err := buildExecutor(cfg)
 			if err != nil {
 				return err
 			}

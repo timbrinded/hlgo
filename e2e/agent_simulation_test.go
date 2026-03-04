@@ -13,19 +13,18 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
+	"github.com/timbrinded/hlgo/pkg/wire"
 )
 
 const agentSimulationTimeout = 3 * time.Minute
 
 func TestE2E_AgentSimulation(t *testing.T) {
-	agentKey := strings.TrimSpace(os.Getenv("HL_TEST_AGENT_KEY"))
-	masterKey := strings.TrimSpace(os.Getenv("HL_TEST_MASTER_KEY"))
-	if agentKey == "" || masterKey == "" {
-		t.Skip("skipping agent simulation: set HL_TEST_AGENT_KEY and HL_TEST_MASTER_KEY")
+	privateKey := strings.TrimSpace(os.Getenv("HL_TEST_PRIVATE_KEY"))
+	if privateKey == "" {
+		t.Skip("skipping agent simulation: set HL_TEST_PRIVATE_KEY")
 	}
 
-	t.Setenv("HL_AGENT_KEY", agentKey)
-	t.Setenv("HL_MASTER_KEY", masterKey)
+	t.Setenv("HL_PRIVATE_KEY", privateKey)
 
 	start := time.Now()
 	assertWithinTimeout := func(step string) {
@@ -188,10 +187,11 @@ func restingBracketPrices(t *testing.T, midPrice string) (entry, tp, sl string) 
 		t.Fatalf("invalid non-positive ETH mid %s", mid.String())
 	}
 
-	// Keep entry comfortably below market to reduce fill probability during the test.
-	entryPx := mid.Mul(decimal.NewFromFloat(0.8)).Round(2)
-	tpPx := entryPx.Mul(decimal.NewFromFloat(1.05)).Round(2)
-	slPx := entryPx.Mul(decimal.NewFromFloat(0.95)).Round(2)
+	// Keep entry comfortably below market to reduce fill probability during the test,
+	// then snap all prices to valid wire-format constraints (5 sig figs).
+	entryPx := wire.NearestValidPrice(mid.Mul(decimal.NewFromFloat(0.8)), 4, false)
+	tpPx := wire.NearestValidPrice(entryPx.Mul(decimal.NewFromFloat(1.05)), 4, false)
+	slPx := wire.NearestValidPrice(entryPx.Mul(decimal.NewFromFloat(0.95)), 4, false)
 	return entryPx.String(), tpPx.String(), slPx.String()
 }
 

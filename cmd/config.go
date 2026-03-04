@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -21,7 +22,7 @@ func newConfigCmd() *cobra.Command {
 		Short:       "Configure hlgo settings and credentials",
 		Annotations: map[string]string{"skipConfig": "true"},
 		Long: `Initialize configuration, display resolved settings (with key redaction),
-and test wallet connectivity and agent approval status. Configuration is
+and test wallet connectivity. Configuration is
 stored at ~/.hlgo/config.yaml by default.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
@@ -40,11 +41,13 @@ stored at ~/.hlgo/config.yaml by default.`,
 // configFileData is the structure written to the YAML config file.
 // Fields mirror the persisted fields in config.Config — keep in sync.
 type configFileData struct {
-	AgentKeyEnv  string `yaml:"agent_key_env"`
-	MasterKeyEnv string `yaml:"master_key_env"`
-	DefaultDex   string `yaml:"default_dex"`
-	MetadataTTL  int    `yaml:"metadata_ttl"`
+	PrivateKeyEnv  string `yaml:"private_key_env"`
+	AccountAddress string `yaml:"account_address"`
+	DefaultDex     string `yaml:"default_dex"`
+	MetadataTTL    int    `yaml:"metadata_ttl"`
 }
+
+var strictEthAddrRegex = regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
 
 // resolveConfigPath expands the default sentinel path to an absolute path.
 func resolveConfigPath(flagValue string) (string, error) {
@@ -60,11 +63,11 @@ func resolveConfigPath(flagValue string) (string, error) {
 
 func newConfigInitCmd() *cobra.Command {
 	var (
-		agentKeyEnv  string
-		masterKeyEnv string
-		defaultDex   string
-		metadataTTL  int
-		force        bool
+		privateKeyEnv  string
+		accountAddress string
+		defaultDex     string
+		metadataTTL    int
+		force          bool
 	)
 
 	cmd := &cobra.Command{
@@ -87,10 +90,10 @@ an existing config unless --force is passed.`,
 			}
 
 			data := configFileData{
-				AgentKeyEnv:  agentKeyEnv,
-				MasterKeyEnv: masterKeyEnv,
-				DefaultDex:   defaultDex,
-				MetadataTTL:  metadataTTL,
+				PrivateKeyEnv:  privateKeyEnv,
+				AccountAddress: accountAddress,
+				DefaultDex:     defaultDex,
+				MetadataTTL:    metadataTTL,
 			}
 
 			out, err := yaml.Marshal(data)
@@ -106,11 +109,9 @@ an existing config unless --force is passed.`,
 				return fmt.Errorf("write config file: %w", err)
 			}
 
-			for _, envName := range []string{agentKeyEnv, masterKeyEnv} {
-				if envName != "" && os.Getenv(envName) == "" {
-					if _, werr := fmt.Fprintf(cmd.ErrOrStderr(), "warning: environment variable %s is not set\n", envName); werr != nil {
-						return werr
-					}
+			if privateKeyEnv != "" && os.Getenv(privateKeyEnv) == "" {
+				if _, werr := fmt.Fprintf(cmd.ErrOrStderr(), "warning: environment variable %s is not set\n", privateKeyEnv); werr != nil {
+					return werr
 				}
 			}
 
@@ -123,11 +124,21 @@ an existing config unless --force is passed.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&agentKeyEnv, "agent-key-env", "HL_AGENT_KEY", "env var name for agent private key")
-	cmd.Flags().StringVar(&masterKeyEnv, "master-key-env", "HL_MASTER_KEY", "env var name for master private key")
+	cmd.Flags().StringVar(&privateKeyEnv, "private-key-env", "HL_PRIVATE_KEY", "env var name for private key")
+	cmd.Flags().StringVar(&accountAddress, "account-address", "", "default account address for reads and account-context commands")
 	cmd.Flags().StringVar(&defaultDex, "default-dex", "", "default HIP-3 dex name")
 	cmd.Flags().IntVar(&metadataTTL, "metadata-ttl", 300, "metadata cache TTL in seconds")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing config file")
+
+	cmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+		if accountAddress == "" {
+			return nil
+		}
+		if !strictEthAddrRegex.MatchString(accountAddress) {
+			return fmt.Errorf("invalid --account-address: must be 0x-prefixed 40-hex address")
+		}
+		return nil
+	}
 
 	return cmd
 }
@@ -144,27 +155,22 @@ func newConfigShowCmd() *cobra.Command {
 				return err
 			}
 
-			agentKeyVal := os.Getenv(cfg.AgentKeyEnv)
-			masterKeyVal := os.Getenv(cfg.MasterKeyEnv)
+			privateKeyVal := os.Getenv(cfg.PrivateKeyEnv)
 
 			result := map[string]any{
-				"config_file":    v.ConfigFileUsed(),
-				"agent_key_env":  cfg.AgentKeyEnv,
-				"agent_key_set":  agentKeyVal != "",
-				"master_key_env": cfg.MasterKeyEnv,
-				"master_key_set": masterKeyVal != "",
-				"testnet":        cfg.Testnet,
-				"format":         cfg.Format,
-				"dex":            cfg.Dex,
-				"default_dex":    cfg.DefaultDex,
-				"metadata_ttl":   cfg.MetadataTTL,
+				"config_file":     v.ConfigFileUsed(),
+				"private_key_env": cfg.PrivateKeyEnv,
+				"private_key_set": privateKeyVal != "",
+				"account_address": cfg.AccountAddress,
+				"testnet":         cfg.Testnet,
+				"format":          cfg.Format,
+				"dex":             cfg.Dex,
+				"default_dex":     cfg.DefaultDex,
+				"metadata_ttl":    cfg.MetadataTTL,
 			}
 
-			if agentKeyVal != "" {
-				result["agent_key_preview"] = config.RedactKey(agentKeyVal)
-			}
-			if masterKeyVal != "" {
-				result["master_key_preview"] = config.RedactKey(masterKeyVal)
+			if privateKeyVal != "" {
+				result["private_key_preview"] = config.RedactKey(privateKeyVal)
 			}
 
 			out, err := json.MarshalIndent(result, "", "  ")
@@ -188,10 +194,9 @@ func newConfigTestCmd() *cobra.Command {
 
 			configFile := v.ConfigFileUsed()
 			result := map[string]any{
-				"config_file":        configFile,
-				"config_readable":    configFile != "" && err == nil,
-				"agent_key_env_set":  false,
-				"master_key_env_set": false,
+				"config_file":         configFile,
+				"config_readable":     configFile != "" && err == nil,
+				"private_key_env_set": false,
 			}
 
 			if err != nil {
@@ -208,10 +213,8 @@ func newConfigTestCmd() *cobra.Command {
 				return fmt.Errorf("config not readable: %w", err)
 			}
 
-			agentKeySet := cfg.AgentKeyEnv != "" && os.Getenv(cfg.AgentKeyEnv) != ""
-			masterKeySet := cfg.MasterKeyEnv != "" && os.Getenv(cfg.MasterKeyEnv) != ""
-			result["agent_key_env_set"] = agentKeySet
-			result["master_key_env_set"] = masterKeySet
+			privateKeySet := cfg.PrivateKeyEnv != "" && os.Getenv(cfg.PrivateKeyEnv) != ""
+			result["private_key_env_set"] = privateKeySet
 
 			// Test connectivity by fetching mid prices.
 			ic := buildInfoClient(cfg)
@@ -247,11 +250,11 @@ func newConfigTestCmd() *cobra.Command {
 				return err
 			}
 
-			// Return an error for missing agent key so scripts can check the exit
+			// Return an error for missing private key so scripts can check the exit
 			// code. JSON is already written to stdout; SilenceErrors prevents
 			// Cobra from writing the error to stderr.
-			if !agentKeySet {
-				return fmt.Errorf("agent key env var %q is not set", cfg.AgentKeyEnv)
+			if !privateKeySet {
+				return fmt.Errorf("private key env var %q is not set", cfg.PrivateKeyEnv)
 			}
 			return nil
 		},

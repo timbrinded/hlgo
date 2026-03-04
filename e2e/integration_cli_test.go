@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 )
 
 var integrationBinaryPath string
@@ -38,7 +40,7 @@ func TestMain(m *testing.M) {
 
 	if os.Getenv("HL_CONFIG") == "" {
 		cfgPath := filepath.Join(dir, "integration-config.yaml")
-		cfg := []byte("agent_key_env: HL_TEST_AGENT_KEY\nmaster_key_env: HL_TEST_MASTER_KEY\nmetadata_ttl: 300\n")
+		cfg := []byte("private_key_env: HL_TEST_PRIVATE_KEY\nmetadata_ttl: 300\n")
 		if err := os.WriteFile(cfgPath, cfg, 0600); err != nil {
 			panic("cannot write integration config: " + err.Error())
 		}
@@ -183,19 +185,73 @@ func requireErrorCode(t *testing.T, stderr, want string) map[string]any {
 	return errObj
 }
 
-func ensureMasterKeyForAccountDryRun(t *testing.T) {
+func ensurePrivateKeyForAccountDryRun(t *testing.T) {
 	t.Helper()
-	if strings.TrimSpace(os.Getenv("HL_TEST_MASTER_KEY")) == "" {
-		t.Setenv("HL_TEST_MASTER_KEY", integrationTestPrivateKey)
+	if strings.TrimSpace(os.Getenv("HL_TEST_PRIVATE_KEY")) == "" {
+		t.Setenv("HL_TEST_PRIVATE_KEY", integrationTestPrivateKey)
 	}
+}
+
+func setIntegrationPrivateKey(t *testing.T, privateKey string) {
+	t.Helper()
+	t.Setenv("HL_TEST_PRIVATE_KEY", strings.TrimSpace(privateKey))
+}
+
+func integrationAddressFromPrivateKey(t *testing.T, privateKeyHex string) string {
+	t.Helper()
+
+	key, err := ethcrypto.HexToECDSA(strings.TrimPrefix(strings.TrimSpace(privateKeyHex), "0x"))
+	if err != nil {
+		t.Fatalf("failed to parse private key: %v", err)
+	}
+	return strings.ToLower(ethcrypto.PubkeyToAddress(key.PublicKey).Hex())
+}
+
+func newIntegrationSignerKey(t *testing.T) (privateKeyHex, address string) {
+	t.Helper()
+
+	key, err := ethcrypto.GenerateKey()
+	if err != nil {
+		t.Fatalf("failed to generate signer key: %v", err)
+	}
+
+	return "0x" + hex.EncodeToString(ethcrypto.FromECDSA(key)), strings.ToLower(ethcrypto.PubkeyToAddress(key.PublicKey).Hex())
+}
+
+func restingBtcBidPrice(t *testing.T) string {
+	t.Helper()
+
+	stdout, stderr, code := runIntegrationHLGOWithRetry(t, "info", "mids")
+	assertNoSecretLeak(t, stdout, stderr)
+	requireIntegrationExitCode(t, code, 0, stderr)
+
+	mids := parseJSONObject(t, stdout)
+	rawMid, ok := mids["BTC"].(string)
+	if !ok || strings.TrimSpace(rawMid) == "" {
+		t.Fatalf("expected BTC mid string, got %#v", mids["BTC"])
+	}
+
+	mid, err := strconv.ParseFloat(rawMid, 64)
+	if err != nil {
+		t.Fatalf("failed to parse BTC mid %q: %v", rawMid, err)
+	}
+	if mid <= 0 {
+		t.Fatalf("BTC mid must be positive, got %f", mid)
+	}
+
+	// Keep a resting bid comfortably below market to reduce fill probability.
+	price := int(mid * 0.8)
+	if price < 1 {
+		price = 1
+	}
+	return strconv.Itoa(price)
 }
 
 func assertNoSecretLeak(t *testing.T, stdout, stderr string) {
 	t.Helper()
 	candidates := []string{
 		integrationTestPrivateKey,
-		strings.TrimSpace(os.Getenv("HL_TEST_MASTER_KEY")),
-		strings.TrimSpace(os.Getenv("HL_TEST_AGENT_KEY")),
+		strings.TrimSpace(os.Getenv("HL_TEST_PRIVATE_KEY")),
 	}
 
 	for _, secret := range candidates {
@@ -210,7 +266,7 @@ func assertNoSecretLeak(t *testing.T, stdout, stderr string) {
 
 func TestIntegration_InfoLookupAllDexesAllowsInheritedDefaultDex(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "integration-config.yaml")
-	cfg := []byte("agent_key_env: HL_TEST_AGENT_KEY\nmaster_key_env: HL_TEST_MASTER_KEY\ndefault_dex: tngs\nmetadata_ttl: 300\n")
+	cfg := []byte("private_key_env: HL_TEST_PRIVATE_KEY\ndefault_dex: tngs\nmetadata_ttl: 300\n")
 	if err := os.WriteFile(cfgPath, cfg, 0600); err != nil {
 		t.Fatalf("writing temp config: %v", err)
 	}
@@ -330,8 +386,8 @@ func findOpenOrderByLimitPx(orders []map[string]any, px string) (map[string]any,
 }
 
 func TestIntegration_OrderLifecycle(t *testing.T) {
-	if os.Getenv("HL_TEST_AGENT_KEY") == "" {
-		t.Skip("skipping order lifecycle integration: HL_TEST_AGENT_KEY is not set")
+	if os.Getenv("HL_TEST_PRIVATE_KEY") == "" {
+		t.Skip("skipping order lifecycle integration: HL_TEST_PRIVATE_KEY is not set")
 	}
 
 	cloid := newIntegrationCloid(t)
@@ -471,8 +527,152 @@ func TestIntegration_OrderLifecycle(t *testing.T) {
 	_ = parseJSONObject(t, stdout)
 }
 
+func TestIntegration_OnBehalf_AuthorizedRandomSignerFlow(t *testing.T) {
+	deployerKey := strings.TrimSpace(os.Getenv("HL_TEST_PRIVATE_KEY"))
+	if deployerKey == "" {
+		t.Skip("skipping on-behalf integration: HL_TEST_PRIVATE_KEY is not set")
+	}
+
+	deployerAddr := integrationAddressFromPrivateKey(t, deployerKey)
+	agentKey, agentAddr := newIntegrationSignerKey(t)
+	agentName := fmt.Sprintf("agt%013d", time.Now().UnixNano()%10_000_000_000_000)
+	cloid := newIntegrationCloid(t)
+	price := restingBtcBidPrice(t)
+
+	agentApproved := false
+	orderPlaced := false
+	defer func() {
+		// Cleanup should always run as the deployer account.
+		setIntegrationPrivateKey(t, deployerKey)
+		if orderPlaced {
+			_, _, _ = runIntegrationHLGO(t,
+				"order", "cancel",
+				"--coin", "BTC",
+				"--cloid", cloid,
+			)
+		}
+		if agentApproved {
+			_, _, _ = runIntegrationHLGO(t,
+				"account", "approve-agent",
+				"--agent", agentAddr,
+				"--revoke",
+				"--confirm",
+			)
+		}
+	}()
+
+	t.Log("step 1: authorize random signer as agent from deployer account")
+	setIntegrationPrivateKey(t, deployerKey)
+	stdout, stderr, code := runIntegrationHLGOWithRetry(t,
+		"account", "approve-agent",
+		"--agent", agentAddr,
+		"--name", agentName,
+	)
+	assertNoSecretLeak(t, stdout, stderr)
+	if code != 0 && strings.Contains(stderr, "does not exist") {
+		t.Skipf("skipping on-behalf integration: deployer account unavailable: %s", strings.TrimSpace(stderr))
+	}
+	requireIntegrationExitCode(t, code, 0, stderr)
+	_ = parseJSONObject(t, stdout)
+	agentApproved = true
+
+	t.Log("step 2: place order with random signer on behalf of deployer account")
+	setIntegrationPrivateKey(t, agentKey)
+	for attempt := 1; attempt <= 6; attempt++ {
+		stdout, stderr, code = runIntegrationHLGO(t,
+			"order", "place",
+			"--coin", "BTC",
+			"--side", "buy",
+			"--price", price,
+			"--size", "0.001",
+			"--cloid", cloid,
+		)
+		assertNoSecretLeak(t, stdout, stderr)
+		if code == 0 {
+			break
+		}
+
+		// Approvals may take a moment to become usable in live environments.
+		if strings.Contains(stderr, "does not exist") || strings.Contains(strings.ToLower(stderr), "not approved") {
+			if attempt < 6 {
+				time.Sleep(500 * time.Millisecond)
+				continue
+			}
+		}
+
+		if isTransientIntegrationError(code, stderr) && attempt < 6 {
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+		break
+	}
+	if code != 0 && strings.Contains(stderr, "does not exist") {
+		t.Skipf("skipping on-behalf integration: account/approval not ready: %s", strings.TrimSpace(stderr))
+	}
+	requireIntegrationExitCode(t, code, 0, stderr)
+	_ = parseJSONObject(t, stdout)
+	orderPlaced = true
+
+	t.Log("step 3: verify on-behalf order appears in deployer open-orders")
+	found := false
+	for range 8 {
+		stdout, stderr, code = runIntegrationHLGOWithRetry(t,
+			"info", "open-orders",
+			"--address", deployerAddr,
+		)
+		assertNoSecretLeak(t, stdout, stderr)
+		requireIntegrationExitCode(t, code, 0, stderr)
+		orders := parseJSONArray(t, stdout)
+		if _, ok := findOpenOrderByCloid(orders, cloid); ok {
+			found = true
+			break
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	if !found {
+		t.Fatalf("expected on-behalf order with cloid %q in deployer open-orders", cloid)
+	}
+
+	t.Log("step 4: verify unsupported on-behalf account action is rejected")
+	stdout, stderr, code = runIntegrationHLGO(t,
+		"account", "transfer",
+		"--amount", "1",
+		"--to-perp",
+		"--on-behalf-of", deployerAddr,
+		"--dry-run",
+	)
+	assertNoSecretLeak(t, stdout, stderr)
+	requireIntegrationExitCode(t, code, 4, stderr)
+	errObj := requireErrorCode(t, stderr, "API_ERROR")
+	msg, ok := errObj["error"].(string)
+	if !ok {
+		t.Fatalf("missing error message: %#v", errObj["error"])
+	}
+	if !strings.Contains(msg, "unknown flag") {
+		t.Fatalf("unexpected error message: %q", msg)
+	}
+
+	t.Log("step 5: verify schedule-cancel rejects on-behalf context")
+	stdout, stderr, code = runIntegrationHLGO(t,
+		"order", "schedule-cancel",
+		"--timeout", "5m",
+		"--on-behalf-of", deployerAddr,
+		"--dry-run",
+	)
+	assertNoSecretLeak(t, stdout, stderr)
+	requireIntegrationExitCode(t, code, 4, stderr)
+	errObj = requireErrorCode(t, stderr, "API_ERROR")
+	msg, ok = errObj["error"].(string)
+	if !ok {
+		t.Fatalf("missing error message: %#v", errObj["error"])
+	}
+	if !strings.Contains(msg, "unknown flag") {
+		t.Fatalf("unexpected error message: %q", msg)
+	}
+}
+
 func TestIntegration_AccountDryRunPayloadContracts(t *testing.T) {
-	ensureMasterKeyForAccountDryRun(t)
+	ensurePrivateKeyForAccountDryRun(t)
 	const mixedAddr = "0xABABABABABABABABABABABABABABABABABABABAB"
 	const lowerAddr = "0xabababababababababababababababababababab"
 
@@ -615,7 +815,7 @@ func TestIntegration_AccountDryRunPayloadContracts(t *testing.T) {
 }
 
 func TestIntegration_AccountValidationContracts(t *testing.T) {
-	ensureMasterKeyForAccountDryRun(t)
+	ensurePrivateKeyForAccountDryRun(t)
 	const validAddr = "0x1111111111111111111111111111111111111111"
 
 	tests := []struct {
@@ -750,11 +950,11 @@ func TestIntegration_AccountValidationContracts(t *testing.T) {
 	}
 }
 
-func TestIntegration_AccountMissingMasterKeyConfigError(t *testing.T) {
-	t.Setenv("HL_TEST_MASTER_KEY_NOT_SET", "")
+func TestIntegration_AccountMissingPrivateKeyConfigError(t *testing.T) {
+	t.Setenv("HL_TEST_PRIVATE_KEY_NOT_SET", "")
 
 	cfgPath := filepath.Join(t.TempDir(), "integration-config.yaml")
-	cfg := []byte("agent_key_env: HL_TEST_AGENT_KEY\nmaster_key_env: HL_TEST_MASTER_KEY_NOT_SET\nmetadata_ttl: 300\n")
+	cfg := []byte("private_key_env: HL_TEST_PRIVATE_KEY_NOT_SET\nmetadata_ttl: 300\n")
 	if err := os.WriteFile(cfgPath, cfg, 0600); err != nil {
 		t.Fatalf("writing temp config: %v", err)
 	}
@@ -769,17 +969,61 @@ func TestIntegration_AccountMissingMasterKeyConfigError(t *testing.T) {
 	assertNoSecretLeak(t, stdout, stderr)
 	requireIntegrationExitCode(t, code, 2, stderr)
 	errObj := requireErrorCode(t, stderr, "CONFIG_ERROR")
-	requireFieldString(t, errObj, "error", "master key not set")
+	requireFieldString(t, errObj, "error", "private key not set")
 
 	details, ok := errObj["details"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected details map, got %#v", errObj["details"])
 	}
-	requireFieldString(t, details, "env_var", "HL_TEST_MASTER_KEY_NOT_SET")
+	requireFieldString(t, details, "env_var", "HL_TEST_PRIVATE_KEY_NOT_SET")
+}
+
+func TestIntegration_InfoOpenOrders_UsesConfiguredAccountAddress(t *testing.T) {
+	t.Setenv("HL_TEST_PRIVATE_KEY_NOT_SET", "")
+
+	const accountAddress = "0x1111111111111111111111111111111111111111"
+
+	cfgWithAccountPath := filepath.Join(t.TempDir(), "integration-config-with-account.yaml")
+	cfgWithAccount := []byte(fmt.Sprintf(
+		"private_key_env: HL_TEST_PRIVATE_KEY_NOT_SET\naccount_address: %s\nmetadata_ttl: 300\n",
+		accountAddress,
+	))
+	if err := os.WriteFile(cfgWithAccountPath, cfgWithAccount, 0600); err != nil {
+		t.Fatalf("writing temp config with account_address: %v", err)
+	}
+
+	stdout, stderr, code := runIntegrationHLGO(t,
+		"--config", cfgWithAccountPath,
+		"info", "open-orders",
+	)
+	assertNoSecretLeak(t, stdout, stderr)
+	requireIntegrationExitCode(t, code, 0, stderr)
+	_ = parseJSONArray(t, stdout)
+
+	cfgWithoutAccountPath := filepath.Join(t.TempDir(), "integration-config-without-account.yaml")
+	cfgWithoutAccount := []byte("private_key_env: HL_TEST_PRIVATE_KEY_NOT_SET\nmetadata_ttl: 300\n")
+	if err := os.WriteFile(cfgWithoutAccountPath, cfgWithoutAccount, 0600); err != nil {
+		t.Fatalf("writing temp config without account_address: %v", err)
+	}
+
+	stdout, stderr, code = runIntegrationHLGO(t,
+		"--config", cfgWithoutAccountPath,
+		"info", "open-orders",
+	)
+	assertNoSecretLeak(t, stdout, stderr)
+	requireIntegrationExitCode(t, code, 2, stderr)
+	errObj := requireErrorCode(t, stderr, "CONFIG_ERROR")
+	msg, ok := errObj["error"].(string)
+	if !ok {
+		t.Fatalf("missing error message: %#v", errObj["error"])
+	}
+	if !strings.Contains(msg, "no address available") {
+		t.Fatalf("unexpected error message: %q", msg)
+	}
 }
 
 func TestIntegration_AccountDryRunNonceFreshness(t *testing.T) {
-	ensureMasterKeyForAccountDryRun(t)
+	ensurePrivateKeyForAccountDryRun(t)
 
 	stdout1, stderr1, code1 := runIntegrationHLGO(t,
 		"account", "transfer",
@@ -811,8 +1055,8 @@ func TestIntegration_AccountDryRunNonceFreshness(t *testing.T) {
 }
 
 func TestIntegration_AccountLiveReversibleFlows(t *testing.T) {
-	if strings.TrimSpace(os.Getenv("HL_TEST_MASTER_KEY")) == "" {
-		t.Skip("skipping live account reversible flows: HL_TEST_MASTER_KEY is not set")
+	if strings.TrimSpace(os.Getenv("HL_TEST_PRIVATE_KEY")) == "" {
+		t.Skip("skipping live account reversible flows: HL_TEST_PRIVATE_KEY is not set")
 	}
 
 	req := requiredLiveEnv(t, "HL_TEST_ACCOUNT_TRANSFER_AMOUNT")
@@ -946,8 +1190,8 @@ func TestIntegration_AccountLiveReversibleFlows(t *testing.T) {
 }
 
 func TestIntegration_AccountLiveOneWayOperations(t *testing.T) {
-	if strings.TrimSpace(os.Getenv("HL_TEST_MASTER_KEY")) == "" {
-		t.Skip("skipping live account one-way operations: HL_TEST_MASTER_KEY is not set")
+	if strings.TrimSpace(os.Getenv("HL_TEST_PRIVATE_KEY")) == "" {
+		t.Skip("skipping live account one-way operations: HL_TEST_PRIVATE_KEY is not set")
 	}
 
 	req := requiredLiveEnv(

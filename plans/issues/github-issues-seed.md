@@ -24,7 +24,7 @@ Implement Viper-backed config resolution + env override support and interactive 
 
 ### Acceptance Criteria
 - Supports `~/.hlgo/config.yaml` and `HL_CONFIG` override.
-- Env var based key references (`HL_AGENT_KEY`, `HL_MASTER_KEY`) only.
+- Env var based key reference (`HL_PRIVATE_KEY`) only.
 - `config show` redacts secrets.
 - `config test` validates API connectivity and agent approval status.
 - Unit tests for missing/invalid config + redaction behavior.
@@ -36,8 +36,8 @@ Implement Viper-backed config resolution + env override support and interactive 
 Wrap `sonirico/go-hyperliquid` signing APIs with explicit wallet selection and deterministic unit tests from Python SDK vectors.
 
 ### Acceptance Criteria
-- L1 phantom signing path implemented (agent wallet).
-- User-signed path implemented (master wallet).
+- L1 phantom signing path implemented (configured key).
+- User-signed path implemented (configured key).
 - All required deterministic signature vectors ported and passing.
 - Nonce generation helper uses Unix ms.
 - CI job runs signer vector tests on every PR.
@@ -76,7 +76,7 @@ Implement MVP read commands: state, mids, book, trades, open-orders, fills, meta
 
 ### Acceptance Criteria
 - All listed commands return JSON by default and support `--format table`.
-- Address optional args default to configured agent wallet.
+- Address optional args default to configured signer address.
 - `--dex` and `--spot` behavior implemented where applicable.
 - Errors follow standard JSON schema on stderr.
 - Unit tests for request payload shaping.
@@ -85,7 +85,7 @@ Implement MVP read commands: state, mids, book, trades, open-orders, fills, meta
 **Labels:** `phase-3`, `exchange`, `mvp`
 
 ### Description
-Implement order place/market/cancel/cancel-all/modify/batch with agent wallet signing.
+Implement order place/market/cancel/cancel-all/modify/batch with configured-key L1 signing.
 
 ### Acceptance Criteria
 - `order place` maps all required wire fields correctly.
@@ -99,10 +99,10 @@ Implement order place/market/cancel/cancel-all/modify/batch with agent wallet si
 **Labels:** `phase-4`, `account`, `exchange`
 
 ### Description
-Implement leverage/margin and master-wallet account actions (transfer, withdraw, class-transfer, send-asset, approve-agent, dex-abstraction).
+Implement leverage/margin and account actions (transfer, withdraw, class-transfer, send-asset, approve-agent, dex-abstraction).
 
 ### Acceptance Criteria
-- Agent vs master wallet enforcement implemented.
+- Single-key signer behavior implemented for both L1 and user-signed paths.
 - Dangerous commands require `--confirm` unless `--dry-run`.
 - Successful action responses normalized to JSON output schema.
 - Integration tests for at least one user-signed flow.

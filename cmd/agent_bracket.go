@@ -26,7 +26,6 @@ func newAgentBracketCmd() *cobra.Command {
 			slStr, _ := cmd.Flags().GetString("sl")                              //nolint:errcheck // known flag
 			tifFlag, _ := cmd.Flags().GetString("tif")                           //nolint:errcheck // known flag
 			cloidStr, _ := cmd.Flags().GetString("cloid")                        //nolint:errcheck // known flag
-			vault, _ := cmd.Flags().GetString("vault")                           //nolint:errcheck // known flag
 			builderAddr, _ := cmd.Flags().GetString("builder")                   //nolint:errcheck // known flag
 			builderFeeTenthsBp, _ := cmd.Flags().GetInt("builder-fee-tenths-bp") //nolint:errcheck // known flag
 			expiresAfterStr, _ := cmd.Flags().GetString("expires-after")         //nolint:errcheck // known flag
@@ -94,11 +93,6 @@ func newAgentBracketCmd() *cobra.Command {
 				cloid = &cloidStr
 			}
 
-			if vault != "" && !common.IsHexAddress(vault) {
-				return output.NewCLIError(output.ErrValidation, "invalid vault address").
-					WithDetails("vault", vault)
-			}
-
 			changedBuilder := cmd.Flags().Changed("builder")
 			changedBuilderFee := cmd.Flags().Changed("builder-fee-tenths-bp")
 			if changedBuilder != changedBuilderFee {
@@ -151,7 +145,6 @@ func newAgentBracketCmd() *cobra.Command {
 				SlTrigger:    &slTrigger,
 				Builder:      builder,
 				ExpiresAfter: expiresAfter,
-				VaultAddr:    vault,
 				DryRun:       cfg.DryRun,
 			})
 			if err != nil {
@@ -170,7 +163,6 @@ func newAgentBracketCmd() *cobra.Command {
 	cmd.Flags().String("sl", "", "stop-loss trigger price")
 	cmd.Flags().String("tif", "gtc", "time in force: gtc, ioc, alo")
 	cmd.Flags().String("cloid", "", "client order ID")
-	cmd.Flags().String("vault", "", "vault address")
 	cmd.Flags().String("builder", "", "builder address for optional builder fee routing")
 	cmd.Flags().Int("builder-fee-tenths-bp", 0, "builder fee in tenths of a basis point (requires --builder)")
 	cmd.Flags().String("expires-after", "", "expiry timestamp (Unix ms or ISO 8601)")
