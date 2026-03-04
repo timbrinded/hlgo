@@ -978,6 +978,50 @@ func TestIntegration_AccountMissingPrivateKeyConfigError(t *testing.T) {
 	requireFieldString(t, details, "env_var", "HL_TEST_PRIVATE_KEY_NOT_SET")
 }
 
+func TestIntegration_InfoOpenOrders_UsesConfiguredAccountAddress(t *testing.T) {
+	t.Setenv("HL_TEST_PRIVATE_KEY_NOT_SET", "")
+
+	const accountAddress = "0x1111111111111111111111111111111111111111"
+
+	cfgWithAccountPath := filepath.Join(t.TempDir(), "integration-config-with-account.yaml")
+	cfgWithAccount := []byte(fmt.Sprintf(
+		"private_key_env: HL_TEST_PRIVATE_KEY_NOT_SET\naccount_address: %s\nmetadata_ttl: 300\n",
+		accountAddress,
+	))
+	if err := os.WriteFile(cfgWithAccountPath, cfgWithAccount, 0600); err != nil {
+		t.Fatalf("writing temp config with account_address: %v", err)
+	}
+
+	stdout, stderr, code := runIntegrationHLGO(t,
+		"--config", cfgWithAccountPath,
+		"info", "open-orders",
+	)
+	assertNoSecretLeak(t, stdout, stderr)
+	requireIntegrationExitCode(t, code, 0, stderr)
+	_ = parseJSONArray(t, stdout)
+
+	cfgWithoutAccountPath := filepath.Join(t.TempDir(), "integration-config-without-account.yaml")
+	cfgWithoutAccount := []byte("private_key_env: HL_TEST_PRIVATE_KEY_NOT_SET\nmetadata_ttl: 300\n")
+	if err := os.WriteFile(cfgWithoutAccountPath, cfgWithoutAccount, 0600); err != nil {
+		t.Fatalf("writing temp config without account_address: %v", err)
+	}
+
+	stdout, stderr, code = runIntegrationHLGO(t,
+		"--config", cfgWithoutAccountPath,
+		"info", "open-orders",
+	)
+	assertNoSecretLeak(t, stdout, stderr)
+	requireIntegrationExitCode(t, code, 2, stderr)
+	errObj := requireErrorCode(t, stderr, "CONFIG_ERROR")
+	msg, ok := errObj["error"].(string)
+	if !ok {
+		t.Fatalf("missing error message: %#v", errObj["error"])
+	}
+	if !strings.Contains(msg, "no address available") {
+		t.Fatalf("unexpected error message: %q", msg)
+	}
+}
+
 func TestIntegration_AccountDryRunNonceFreshness(t *testing.T) {
 	ensurePrivateKeyForAccountDryRun(t)
 
