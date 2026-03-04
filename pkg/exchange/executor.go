@@ -446,19 +446,15 @@ func (e *Executor) PlaceOrder(ctx context.Context, input PlaceOrderInput) (*Plac
 	// 7. Generate nonce and sign.
 	nonce := time.Now().UnixMilli()
 
-	var onBehalfOf *common.Address
-	if input.OnBehalfOf != "" {
-		a := common.HexToAddress(input.OnBehalfOf)
-		onBehalfOf = &a
-	}
-
-	sig, err := e.signer.SignL1Action(action, nonce, onBehalfOf, input.ExpiresAfter, e.mainnet)
+	// On-behalf trading uses the agent signer identity; it is not encoded as
+	// vaultAddress in the L1 action hash/payload.
+	sig, err := e.signer.SignL1Action(action, nonce, nil, input.ExpiresAfter, e.mainnet)
 	if err != nil {
 		return nil, err
 	}
 
 	// 8. Send to exchange.
-	resp, err := e.client.PostExchange(ctx, action, nonce, sigToWire(sig), input.OnBehalfOf, input.ExpiresAfter)
+	resp, err := e.client.PostExchange(ctx, action, nonce, sigToWire(sig), "", input.ExpiresAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -472,6 +468,7 @@ func (e *Executor) PlaceOrder(ctx context.Context, input PlaceOrderInput) (*Plac
 
 // CancelOrders cancels orders by OID.
 func (e *Executor) CancelOrders(ctx context.Context, cancels []CancelWire, onBehalfOf string, dryRun bool, expiresAfter *int64) (json.RawMessage, error) {
+	_ = onBehalfOf // validated at command layer; kept for interface parity and account-context flows.
 	action := BuildCancelAction(cancels)
 
 	if dryRun {
@@ -480,22 +477,18 @@ func (e *Executor) CancelOrders(ctx context.Context, cancels []CancelWire, onBeh
 
 	nonce := time.Now().UnixMilli()
 
-	var onBehalfOfAddr *common.Address
-	if onBehalfOf != "" {
-		a := common.HexToAddress(onBehalfOf)
-		onBehalfOfAddr = &a
-	}
-
-	sig, err := e.signer.SignL1Action(action, nonce, onBehalfOfAddr, expiresAfter, e.mainnet)
+	// On-behalf trading context is handled by agent authorization, not vaultAddress.
+	sig, err := e.signer.SignL1Action(action, nonce, nil, expiresAfter, e.mainnet)
 	if err != nil {
 		return nil, err
 	}
 
-	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), onBehalfOf, expiresAfter)
+	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), "", expiresAfter)
 }
 
 // CancelByCloid cancels orders by client order ID.
 func (e *Executor) CancelByCloid(ctx context.Context, cancels []CancelByCloidWire, onBehalfOf string, dryRun bool, expiresAfter *int64) (json.RawMessage, error) {
+	_ = onBehalfOf // validated at command layer; kept for interface parity and account-context flows.
 	action := BuildCancelByCloidAction(cancels)
 
 	if dryRun {
@@ -504,18 +497,13 @@ func (e *Executor) CancelByCloid(ctx context.Context, cancels []CancelByCloidWir
 
 	nonce := time.Now().UnixMilli()
 
-	var onBehalfOfAddr *common.Address
-	if onBehalfOf != "" {
-		a := common.HexToAddress(onBehalfOf)
-		onBehalfOfAddr = &a
-	}
-
-	sig, err := e.signer.SignL1Action(action, nonce, onBehalfOfAddr, expiresAfter, e.mainnet)
+	// On-behalf trading context is handled by agent authorization, not vaultAddress.
+	sig, err := e.signer.SignL1Action(action, nonce, nil, expiresAfter, e.mainnet)
 	if err != nil {
 		return nil, err
 	}
 
-	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), onBehalfOf, expiresAfter)
+	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), "", expiresAfter)
 }
 
 // UpdateLeverage sets leverage and margin mode for a coin.
@@ -538,18 +526,13 @@ func (e *Executor) UpdateLeverage(ctx context.Context, input UpdateLeverageInput
 
 	nonce := time.Now().UnixMilli()
 
-	var onBehalfOfAddr *common.Address
-	if input.OnBehalfOf != "" {
-		a := common.HexToAddress(input.OnBehalfOf)
-		onBehalfOfAddr = &a
-	}
-
-	sig, err := e.signer.SignL1Action(action, nonce, onBehalfOfAddr, nil, e.mainnet)
+	// On-behalf trading context is handled by agent authorization, not vaultAddress.
+	sig, err := e.signer.SignL1Action(action, nonce, nil, nil, e.mainnet)
 	if err != nil {
 		return nil, err
 	}
 
-	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), input.OnBehalfOf, nil)
+	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), "", nil)
 }
 
 // UpdateIsolatedMargin adjusts isolated margin for a position.
@@ -579,18 +562,13 @@ func (e *Executor) UpdateIsolatedMargin(ctx context.Context, input UpdateIsolate
 
 	nonce := time.Now().UnixMilli()
 
-	var onBehalfOfAddr *common.Address
-	if input.OnBehalfOf != "" {
-		a := common.HexToAddress(input.OnBehalfOf)
-		onBehalfOfAddr = &a
-	}
-
-	sig, err := e.signer.SignL1Action(action, nonce, onBehalfOfAddr, nil, e.mainnet)
+	// On-behalf trading context is handled by agent authorization, not vaultAddress.
+	sig, err := e.signer.SignL1Action(action, nonce, nil, nil, e.mainnet)
 	if err != nil {
 		return nil, err
 	}
 
-	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), input.OnBehalfOf, nil)
+	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), "", nil)
 }
 
 // ModifyOrder modifies an existing order.
@@ -646,18 +624,13 @@ func (e *Executor) ModifyOrder(ctx context.Context, input ModifyOrderInput) (*Mo
 
 	nonce := time.Now().UnixMilli()
 
-	var onBehalfOfAddr *common.Address
-	if input.OnBehalfOf != "" {
-		a := common.HexToAddress(input.OnBehalfOf)
-		onBehalfOfAddr = &a
-	}
-
-	sig, err := e.signer.SignL1Action(action, nonce, onBehalfOfAddr, input.ExpiresAfter, e.mainnet)
+	// On-behalf trading context is handled by agent authorization, not vaultAddress.
+	sig, err := e.signer.SignL1Action(action, nonce, nil, input.ExpiresAfter, e.mainnet)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := e.client.PostExchange(ctx, action, nonce, sigToWire(sig), input.OnBehalfOf, input.ExpiresAfter)
+	resp, err := e.client.PostExchange(ctx, action, nonce, sigToWire(sig), "", input.ExpiresAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -670,20 +643,16 @@ func (e *Executor) ModifyOrder(ctx context.Context, input ModifyOrderInput) (*Mo
 
 // PlaceBatchOrders signs and sends a pre-built OrderAction for batch order placement.
 func (e *Executor) PlaceBatchOrders(ctx context.Context, action *OrderAction, onBehalfOf string, expiresAfter *int64) (json.RawMessage, error) {
+	_ = onBehalfOf // validated at command layer; kept for interface parity and account-context flows.
 	nonce := time.Now().UnixMilli()
 
-	var onBehalfOfAddr *common.Address
-	if onBehalfOf != "" {
-		a := common.HexToAddress(onBehalfOf)
-		onBehalfOfAddr = &a
-	}
-
-	sig, err := e.signer.SignL1Action(action, nonce, onBehalfOfAddr, expiresAfter, e.mainnet)
+	// On-behalf trading context is handled by agent authorization, not vaultAddress.
+	sig, err := e.signer.SignL1Action(action, nonce, nil, expiresAfter, e.mainnet)
 	if err != nil {
 		return nil, err
 	}
 
-	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), onBehalfOf, expiresAfter)
+	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), "", expiresAfter)
 }
 
 // ScheduleCancel sets or clears the dead man's switch for order cancellation.

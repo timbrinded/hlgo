@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 )
 
 var integrationBinaryPath string
@@ -188,6 +190,61 @@ func ensurePrivateKeyForAccountDryRun(t *testing.T) {
 	if strings.TrimSpace(os.Getenv("HL_TEST_PRIVATE_KEY")) == "" {
 		t.Setenv("HL_TEST_PRIVATE_KEY", integrationTestPrivateKey)
 	}
+}
+
+func setIntegrationPrivateKey(t *testing.T, privateKey string) {
+	t.Helper()
+	t.Setenv("HL_TEST_PRIVATE_KEY", strings.TrimSpace(privateKey))
+}
+
+func integrationAddressFromPrivateKey(t *testing.T, privateKeyHex string) string {
+	t.Helper()
+
+	key, err := ethcrypto.HexToECDSA(strings.TrimPrefix(strings.TrimSpace(privateKeyHex), "0x"))
+	if err != nil {
+		t.Fatalf("failed to parse private key: %v", err)
+	}
+	return strings.ToLower(ethcrypto.PubkeyToAddress(key.PublicKey).Hex())
+}
+
+func newIntegrationSignerKey(t *testing.T) (privateKeyHex, address string) {
+	t.Helper()
+
+	key, err := ethcrypto.GenerateKey()
+	if err != nil {
+		t.Fatalf("failed to generate signer key: %v", err)
+	}
+
+	return "0x" + hex.EncodeToString(ethcrypto.FromECDSA(key)), strings.ToLower(ethcrypto.PubkeyToAddress(key.PublicKey).Hex())
+}
+
+func restingBtcBidPrice(t *testing.T) string {
+	t.Helper()
+
+	stdout, stderr, code := runIntegrationHLGOWithRetry(t, "info", "mids")
+	assertNoSecretLeak(t, stdout, stderr)
+	requireIntegrationExitCode(t, code, 0, stderr)
+
+	mids := parseJSONObject(t, stdout)
+	rawMid, ok := mids["BTC"].(string)
+	if !ok || strings.TrimSpace(rawMid) == "" {
+		t.Fatalf("expected BTC mid string, got %#v", mids["BTC"])
+	}
+
+	mid, err := strconv.ParseFloat(rawMid, 64)
+	if err != nil {
+		t.Fatalf("failed to parse BTC mid %q: %v", rawMid, err)
+	}
+	if mid <= 0 {
+		t.Fatalf("BTC mid must be positive, got %f", mid)
+	}
+
+	// Keep a resting bid comfortably below market to reduce fill probability.
+	price := int(mid * 0.8)
+	if price < 1 {
+		price = 1
+	}
+	return strconv.Itoa(price)
 }
 
 func assertNoSecretLeak(t *testing.T, stdout, stderr string) {
@@ -470,8 +527,153 @@ func TestIntegration_OrderLifecycle(t *testing.T) {
 	_ = parseJSONObject(t, stdout)
 }
 
+func TestIntegration_OnBehalf_AuthorizedRandomSignerFlow(t *testing.T) {
+	deployerKey := strings.TrimSpace(os.Getenv("HL_TEST_PRIVATE_KEY"))
+	if deployerKey == "" {
+		t.Skip("skipping on-behalf integration: HL_TEST_PRIVATE_KEY is not set")
+	}
+
+	deployerAddr := integrationAddressFromPrivateKey(t, deployerKey)
+	agentKey, agentAddr := newIntegrationSignerKey(t)
+	agentName := fmt.Sprintf("agt%013d", time.Now().UnixNano()%10_000_000_000_000)
+	cloid := newIntegrationCloid(t)
+	price := restingBtcBidPrice(t)
+
+	agentApproved := false
+	orderPlaced := false
+	defer func() {
+		// Cleanup should always run as the deployer account.
+		setIntegrationPrivateKey(t, deployerKey)
+		if orderPlaced {
+			_, _, _ = runIntegrationHLGO(t,
+				"order", "cancel",
+				"--coin", "BTC",
+				"--cloid", cloid,
+			)
+		}
+		if agentApproved {
+			_, _, _ = runIntegrationHLGO(t,
+				"account", "approve-agent",
+				"--agent", agentAddr,
+				"--revoke",
+				"--confirm",
+			)
+		}
+	}()
+
+	t.Log("step 1: authorize random signer as agent from deployer account")
+	setIntegrationPrivateKey(t, deployerKey)
+	stdout, stderr, code := runIntegrationHLGOWithRetry(t,
+		"account", "approve-agent",
+		"--agent", agentAddr,
+		"--name", agentName,
+	)
+	assertNoSecretLeak(t, stdout, stderr)
+	if code != 0 && strings.Contains(stderr, "does not exist") {
+		t.Skipf("skipping on-behalf integration: deployer account unavailable: %s", strings.TrimSpace(stderr))
+	}
+	requireIntegrationExitCode(t, code, 0, stderr)
+	_ = parseJSONObject(t, stdout)
+	agentApproved = true
+
+	t.Log("step 2: place order with random signer on behalf of deployer account")
+	setIntegrationPrivateKey(t, agentKey)
+	for attempt := 1; attempt <= 6; attempt++ {
+		stdout, stderr, code = runIntegrationHLGO(t,
+			"order", "place",
+			"--coin", "BTC",
+			"--side", "buy",
+			"--price", price,
+			"--size", "0.001",
+			"--cloid", cloid,
+			"--on-behalf-of", deployerAddr,
+		)
+		assertNoSecretLeak(t, stdout, stderr)
+		if code == 0 {
+			break
+		}
+
+		// Approvals may take a moment to become usable in live environments.
+		if strings.Contains(stderr, "does not exist") || strings.Contains(strings.ToLower(stderr), "not approved") {
+			if attempt < 6 {
+				time.Sleep(500 * time.Millisecond)
+				continue
+			}
+		}
+
+		if isTransientIntegrationError(code, stderr) && attempt < 6 {
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+		break
+	}
+	if code != 0 && strings.Contains(stderr, "does not exist") {
+		t.Skipf("skipping on-behalf integration: account/approval not ready: %s", strings.TrimSpace(stderr))
+	}
+	requireIntegrationExitCode(t, code, 0, stderr)
+	_ = parseJSONObject(t, stdout)
+	orderPlaced = true
+
+	t.Log("step 3: verify on-behalf order appears in deployer open-orders")
+	found := false
+	for range 8 {
+		stdout, stderr, code = runIntegrationHLGOWithRetry(t,
+			"info", "open-orders",
+			"--address", deployerAddr,
+		)
+		assertNoSecretLeak(t, stdout, stderr)
+		requireIntegrationExitCode(t, code, 0, stderr)
+		orders := parseJSONArray(t, stdout)
+		if _, ok := findOpenOrderByCloid(orders, cloid); ok {
+			found = true
+			break
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	if !found {
+		t.Fatalf("expected on-behalf order with cloid %q in deployer open-orders", cloid)
+	}
+
+	t.Log("step 4: verify unsupported on-behalf account action is rejected")
+	stdout, stderr, code = runIntegrationHLGO(t,
+		"account", "transfer",
+		"--amount", "1",
+		"--to-perp",
+		"--on-behalf-of", deployerAddr,
+		"--dry-run",
+	)
+	assertNoSecretLeak(t, stdout, stderr)
+	requireIntegrationExitCode(t, code, 1, stderr)
+	errObj := requireErrorCode(t, stderr, "VALIDATION_ERROR")
+	msg, ok := errObj["error"].(string)
+	if !ok {
+		t.Fatalf("missing error message: %#v", errObj["error"])
+	}
+	if !strings.Contains(msg, "on-behalf-of is not supported for user-signed actions") {
+		t.Fatalf("unexpected error message: %q", msg)
+	}
+
+	t.Log("step 5: verify schedule-cancel rejects on-behalf context")
+	stdout, stderr, code = runIntegrationHLGO(t,
+		"order", "schedule-cancel",
+		"--timeout", "5m",
+		"--on-behalf-of", deployerAddr,
+		"--dry-run",
+	)
+	assertNoSecretLeak(t, stdout, stderr)
+	requireIntegrationExitCode(t, code, 1, stderr)
+	errObj = requireErrorCode(t, stderr, "VALIDATION_ERROR")
+	msg, ok = errObj["error"].(string)
+	if !ok {
+		t.Fatalf("missing error message: %#v", errObj["error"])
+	}
+	if !strings.Contains(msg, "on-behalf-of is not supported for schedule-cancel") {
+		t.Fatalf("unexpected error message: %q", msg)
+	}
+}
+
 func TestIntegration_AccountDryRunPayloadContracts(t *testing.T) {
-	ensureMasterKeyForAccountDryRun(t)
+	ensurePrivateKeyForAccountDryRun(t)
 	const mixedAddr = "0xABABABABABABABABABABABABABABABABABABABAB"
 	const lowerAddr = "0xabababababababababababababababababababab"
 
@@ -614,7 +816,7 @@ func TestIntegration_AccountDryRunPayloadContracts(t *testing.T) {
 }
 
 func TestIntegration_AccountValidationContracts(t *testing.T) {
-	ensureMasterKeyForAccountDryRun(t)
+	ensurePrivateKeyForAccountDryRun(t)
 	const validAddr = "0x1111111111111111111111111111111111111111"
 
 	tests := []struct {

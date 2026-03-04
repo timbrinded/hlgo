@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
+	"github.com/timbrinded/hlgo/pkg/wire"
 )
 
 const agentSimulationTimeout = 3 * time.Minute
@@ -186,10 +187,11 @@ func restingBracketPrices(t *testing.T, midPrice string) (entry, tp, sl string) 
 		t.Fatalf("invalid non-positive ETH mid %s", mid.String())
 	}
 
-	// Keep entry comfortably below market to reduce fill probability during the test.
-	entryPx := mid.Mul(decimal.NewFromFloat(0.8)).Round(2)
-	tpPx := entryPx.Mul(decimal.NewFromFloat(1.05)).Round(2)
-	slPx := entryPx.Mul(decimal.NewFromFloat(0.95)).Round(2)
+	// Keep entry comfortably below market to reduce fill probability during the test,
+	// then snap all prices to valid wire-format constraints (5 sig figs).
+	entryPx := wire.NearestValidPrice(mid.Mul(decimal.NewFromFloat(0.8)), 4, false)
+	tpPx := wire.NearestValidPrice(entryPx.Mul(decimal.NewFromFloat(1.05)), 4, false)
+	slPx := wire.NearestValidPrice(entryPx.Mul(decimal.NewFromFloat(0.95)), 4, false)
 	return entryPx.String(), tpPx.String(), slPx.String()
 }
 
