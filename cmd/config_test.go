@@ -252,17 +252,27 @@ func TestConfigTest_MissingEnvVar(t *testing.T) {
 }
 
 func TestConfigInit_InvalidAccountAddress(t *testing.T) {
-	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.yaml")
+	tests := []string{
+		"not-an-address",
+		"1111111111111111111111111111111111111111",   // missing 0x prefix
+		"0X1111111111111111111111111111111111111111", // uppercase 0X prefix
+	}
 
-	root := NewRootCommand(BuildInfo{Version: "test"})
-	root.SetArgs([]string{
-		"config", "init",
-		"--config", cfgPath,
-		"--account-address", "not-an-address",
-	})
+	for _, accountAddress := range tests {
+		t.Run(accountAddress, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgPath := filepath.Join(dir, "config.yaml")
 
-	if err := root.Execute(); err == nil {
-		t.Fatal("expected error for invalid --account-address")
+			root := NewRootCommand(BuildInfo{Version: "test"})
+			root.SetArgs([]string{
+				"config", "init",
+				"--config", cfgPath,
+				"--account-address", accountAddress,
+			})
+
+			if err := root.Execute(); err == nil {
+				t.Fatalf("expected error for invalid --account-address %q", accountAddress)
+			}
+		})
 	}
 }

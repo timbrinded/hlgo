@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.yaml.in/yaml/v3"
@@ -46,6 +46,8 @@ type configFileData struct {
 	DefaultDex     string `yaml:"default_dex"`
 	MetadataTTL    int    `yaml:"metadata_ttl"`
 }
+
+var strictEthAddrRegex = regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
 
 // resolveConfigPath expands the default sentinel path to an absolute path.
 func resolveConfigPath(flagValue string) (string, error) {
@@ -132,7 +134,7 @@ an existing config unless --force is passed.`,
 		if accountAddress == "" {
 			return nil
 		}
-		if !common.IsHexAddress(accountAddress) {
+		if !strictEthAddrRegex.MatchString(accountAddress) {
 			return fmt.Errorf("invalid --account-address: must be 0x-prefixed 40-hex address")
 		}
 		return nil
