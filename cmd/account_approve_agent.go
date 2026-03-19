@@ -3,6 +3,7 @@ package cmd
 import (
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
 
 	"github.com/timbrinded/hlgo/pkg/config"
@@ -22,6 +23,11 @@ Note: Hyperliquid may charge an activation fee when first approving an agent.`,
 			agent, _ := cmd.Flags().GetString("agent") //nolint:errcheck // known flag
 			name, _ := cmd.Flags().GetString("name")   //nolint:errcheck // known flag
 			revoke, _ := cmd.Flags().GetBool("revoke") //nolint:errcheck // known flag
+
+			if !common.IsHexAddress(agent) {
+				return output.NewCLIError(output.ErrValidation, "invalid agent address").
+					WithDetails("agent", agent)
+			}
 
 			agentName := strings.TrimSpace(name)
 			switch {
@@ -44,7 +50,11 @@ Note: Hyperliquid may charge an activation fee when first approving an agent.`,
 				return err
 			}
 
-			input := exchange.ApproveAgentInput{AgentAddress: agent, AgentName: agentName, DryRun: cfg.DryRun}
+			input := exchange.ApproveAgentInput{
+				AgentAddress: strings.ToLower(agent),
+				AgentName:    agentName,
+				DryRun:       cfg.DryRun,
+			}
 			raw, err := exec.ApproveAgent(cmd.Context(), input)
 			if err != nil {
 				return err

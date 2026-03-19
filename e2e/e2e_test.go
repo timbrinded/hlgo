@@ -18,6 +18,17 @@ var binaryPath string
 
 const e2eTestPrivateKey = "0x0123456789012345678901234567890123456789012345678901234567890123"
 
+func fundedE2EPrivateKey() string {
+	return strings.TrimSpace(os.Getenv("HL_TEST_PRIVATE_KEY"))
+}
+
+func effectiveE2EPrivateKey() string {
+	if key := fundedE2EPrivateKey(); key != "" {
+		return key
+	}
+	return e2eTestPrivateKey
+}
+
 func TestMain(m *testing.M) {
 	// Build the binary once for all tests.
 	dir, err := os.MkdirTemp("", "hlgo-e2e")
@@ -34,13 +45,12 @@ func TestMain(m *testing.M) {
 		panic("cannot build hlgo: " + err.Error())
 	}
 
-	// Isolate E2E runs from user-local config and ensure dry-run order tests have a key.
+	// Isolate E2E runs from user-local config and ensure all CLI subprocesses use
+	// the same resolved key. Funded runs opt in via HL_TEST_PRIVATE_KEY.
 	if os.Getenv("HL_CONFIG") == "" {
 		_ = os.Setenv("HL_CONFIG", filepath.Join(dir, "e2e-config.yaml"))
 	}
-	if os.Getenv("HL_PRIVATE_KEY") == "" {
-		_ = os.Setenv("HL_PRIVATE_KEY", e2eTestPrivateKey)
-	}
+	_ = os.Setenv("HL_PRIVATE_KEY", effectiveE2EPrivateKey())
 
 	os.Exit(m.Run())
 }

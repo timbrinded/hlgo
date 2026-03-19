@@ -17,12 +17,38 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 )
 
 var integrationBinaryPath string
 
 const integrationTestPrivateKey = "0x0123456789012345678901234567890123456789012345678901234567890123"
+const integrationLiveConfigEnv = "HL_TEST_LIVE_CONFIG_JSON"
+
+type integrationLiveConfig struct {
+	TransferAmount      string                              `json:"transfer_amount"`
+	ApproveAgentAddress string                              `json:"approve_agent_address"`
+	Withdraw            integrationLiveWithdrawConfig       `json:"withdraw"`
+	SendAsset           integrationLiveSendAssetConfig      `json:"send_asset"`
+	SetAbstraction      integrationLiveSetAbstractionConfig `json:"set_abstraction"`
+}
+
+type integrationLiveWithdrawConfig struct {
+	Destination string `json:"destination"`
+	Amount      string `json:"amount"`
+}
+
+type integrationLiveSendAssetConfig struct {
+	Destination string `json:"destination"`
+	Token       string `json:"token"`
+	Amount      string `json:"amount"`
+}
+
+type integrationLiveSetAbstractionConfig struct {
+	User  string `json:"user"`
+	Value string `json:"value"`
+}
 
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "hlgo-integration")
@@ -309,25 +335,106 @@ func TestIntegration_InfoLookupAllDexesAllowsInheritedDefaultDex(t *testing.T) {
 	requireFieldString(t, hip3Req, "dex", "<each dex from perpDexs>")
 }
 
-func requiredLiveEnv(t *testing.T, names ...string) map[string]string {
+func parseIntegrationLiveConfig(raw string) (integrationLiveConfig, error) {
+	var cfg integrationLiveConfig
+	if strings.TrimSpace(raw) == "" {
+		return cfg, fmt.Errorf("%s is empty", integrationLiveConfigEnv)
+	}
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		return cfg, fmt.Errorf("invalid JSON: %w", err)
+	}
+
+	cfg.TransferAmount = strings.TrimSpace(cfg.TransferAmount)
+	cfg.ApproveAgentAddress = strings.TrimSpace(cfg.ApproveAgentAddress)
+	cfg.Withdraw.Destination = strings.TrimSpace(cfg.Withdraw.Destination)
+	cfg.Withdraw.Amount = strings.TrimSpace(cfg.Withdraw.Amount)
+	cfg.SendAsset.Destination = strings.TrimSpace(cfg.SendAsset.Destination)
+	cfg.SendAsset.Token = strings.TrimSpace(cfg.SendAsset.Token)
+	cfg.SendAsset.Amount = strings.TrimSpace(cfg.SendAsset.Amount)
+	cfg.SetAbstraction.User = strings.TrimSpace(cfg.SetAbstraction.User)
+	cfg.SetAbstraction.Value = strings.TrimSpace(cfg.SetAbstraction.Value)
+
+	if cfg.ApproveAgentAddress != "" && !common.IsHexAddress(cfg.ApproveAgentAddress) {
+		return cfg, fmt.Errorf("approve_agent_address must be a hex address")
+	}
+
+	return cfg, nil
+}
+
+func loadIntegrationLiveConfig(t *testing.T) integrationLiveConfig {
 	t.Helper()
 
-	vals := make(map[string]string, len(names))
+	raw := strings.TrimSpace(os.Getenv(integrationLiveConfigEnv))
+	if raw == "" {
+		t.Fatalf("live account integration requires %s", integrationLiveConfigEnv)
+	}
+
+	cfg, err := parseIntegrationLiveConfig(raw)
+	if err != nil {
+		t.Fatalf("invalid %s: %v", integrationLiveConfigEnv, err)
+	}
+	return cfg
+}
+
+func (cfg integrationLiveConfig) missingReversibleFields() []string {
 	var missing []string
-	for _, name := range names {
-		val := strings.TrimSpace(os.Getenv(name))
-		if val == "" {
-			missing = append(missing, name)
-			continue
-		}
-		vals[name] = val
+	if cfg.TransferAmount == "" {
+		missing = append(missing, "transfer_amount")
 	}
+	return missing
+}
 
-	if len(missing) > 0 {
-		t.Fatalf("live account integration requires env vars: %s", strings.Join(missing, ", "))
+func (cfg integrationLiveConfig) missingOneWayFields() []string {
+	var missing []string
+	if cfg.Withdraw.Destination == "" {
+		missing = append(missing, "withdraw.destination")
 	}
+	if cfg.Withdraw.Amount == "" {
+		missing = append(missing, "withdraw.amount")
+	}
+	if cfg.SendAsset.Destination == "" {
+		missing = append(missing, "send_asset.destination")
+	}
+	if cfg.SendAsset.Token == "" {
+		missing = append(missing, "send_asset.token")
+	}
+	if cfg.SendAsset.Amount == "" {
+		missing = append(missing, "send_asset.amount")
+	}
+	if cfg.SetAbstraction.User == "" {
+		missing = append(missing, "set_abstraction.user")
+	}
+	if cfg.SetAbstraction.Value == "" {
+		missing = append(missing, "set_abstraction.value")
+	}
+	return missing
+}
 
-	return vals
+func requireIntegrationLivePrivateKey(t *testing.T) {
+	t.Helper()
+	if strings.TrimSpace(os.Getenv("HL_TEST_PRIVATE_KEY")) == "" {
+		t.Fatalf("live account integration requires HL_TEST_PRIVATE_KEY")
+	}
+}
+
+func requireIntegrationLiveReversibleConfig(t *testing.T) integrationLiveConfig {
+	t.Helper()
+
+	cfg := loadIntegrationLiveConfig(t)
+	if missing := cfg.missingReversibleFields(); len(missing) > 0 {
+		t.Fatalf("%s is missing required fields: %s", integrationLiveConfigEnv, strings.Join(missing, ", "))
+	}
+	return cfg
+}
+
+func requireIntegrationLiveOneWayConfig(t *testing.T) integrationLiveConfig {
+	t.Helper()
+
+	cfg := loadIntegrationLiveConfig(t)
+	if missing := cfg.missingOneWayFields(); len(missing) > 0 {
+		t.Fatalf("%s is missing required fields: %s", integrationLiveConfigEnv, strings.Join(missing, ", "))
+	}
+	return cfg
 }
 
 func newIntegrationCloid(t *testing.T) string {
@@ -348,6 +455,53 @@ func newIntegrationAddress(t *testing.T) string {
 		t.Fatalf("failed to generate address: %v", err)
 	}
 	return "0x" + hex.EncodeToString(b[:])
+}
+
+func TestParseIntegrationLiveConfig_TrimsValues(t *testing.T) {
+	cfg, err := parseIntegrationLiveConfig(`{
+		"transfer_amount": " 1.25 ",
+		"approve_agent_address": " 0x1111111111111111111111111111111111111111 ",
+		"withdraw": {"destination": " 0x2222222222222222222222222222222222222222 ", "amount": " 2 "},
+		"send_asset": {"destination": " 0x3333333333333333333333333333333333333333 ", "token": " PURR:0x1 ", "amount": " 3 "},
+		"set_abstraction": {"user": " 0x4444444444444444444444444444444444444444 ", "value": " disabled "}
+	}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.TransferAmount != "1.25" {
+		t.Fatalf("transfer_amount = %q, want 1.25", cfg.TransferAmount)
+	}
+	if cfg.ApproveAgentAddress != "0x1111111111111111111111111111111111111111" {
+		t.Fatalf("approve_agent_address = %q", cfg.ApproveAgentAddress)
+	}
+	if cfg.Withdraw.Destination != "0x2222222222222222222222222222222222222222" {
+		t.Fatalf("withdraw.destination = %q", cfg.Withdraw.Destination)
+	}
+	if cfg.SendAsset.Token != "PURR:0x1" {
+		t.Fatalf("send_asset.token = %q", cfg.SendAsset.Token)
+	}
+	if cfg.SetAbstraction.Value != "disabled" {
+		t.Fatalf("set_abstraction.value = %q", cfg.SetAbstraction.Value)
+	}
+}
+
+func TestParseIntegrationLiveConfig_InvalidApproveAgentAddress(t *testing.T) {
+	_, err := parseIntegrationLiveConfig(`{"approve_agent_address":"bad"}`)
+	if err == nil {
+		t.Fatal("expected invalid approve_agent_address error")
+	}
+	if !strings.Contains(err.Error(), "approve_agent_address") {
+		t.Fatalf("error = %q, want approve_agent_address", err.Error())
+	}
+}
+
+func TestIntegrationLiveConfig_MissingOneWayFields(t *testing.T) {
+	cfg := integrationLiveConfig{}
+	missing := cfg.missingOneWayFields()
+	if len(missing) != 7 {
+		t.Fatalf("missing len = %d, want 7: %v", len(missing), missing)
+	}
 }
 
 func findOpenOrderByCloid(orders []map[string]any, cloid string) (map[string]any, bool) {
@@ -1055,16 +1209,14 @@ func TestIntegration_AccountDryRunNonceFreshness(t *testing.T) {
 }
 
 func TestIntegration_AccountLiveReversibleFlows(t *testing.T) {
-	if strings.TrimSpace(os.Getenv("HL_TEST_PRIVATE_KEY")) == "" {
-		t.Skip("skipping live account reversible flows: HL_TEST_PRIVATE_KEY is not set")
-	}
+	requireIntegrationLivePrivateKey(t)
+	cfg := requireIntegrationLiveReversibleConfig(t)
 
-	req := requiredLiveEnv(t, "HL_TEST_ACCOUNT_TRANSFER_AMOUNT")
-	agentAddr := strings.TrimSpace(os.Getenv("HL_TEST_APPROVE_AGENT_ADDRESS"))
+	agentAddr := cfg.ApproveAgentAddress
 	if agentAddr == "" {
 		agentAddr = newIntegrationAddress(t)
 	}
-	amount := req["HL_TEST_ACCOUNT_TRANSFER_AMOUNT"]
+	amount := cfg.TransferAmount
 	agentName := fmt.Sprintf("hlgo%010d", time.Now().Unix()%10_000_000_000)
 	if len(agentName) > 16 {
 		t.Fatalf("generated agentName exceeds 16 chars: %q", agentName)
@@ -1190,26 +1342,14 @@ func TestIntegration_AccountLiveReversibleFlows(t *testing.T) {
 }
 
 func TestIntegration_AccountLiveOneWayOperations(t *testing.T) {
-	if strings.TrimSpace(os.Getenv("HL_TEST_PRIVATE_KEY")) == "" {
-		t.Skip("skipping live account one-way operations: HL_TEST_PRIVATE_KEY is not set")
-	}
-
-	req := requiredLiveEnv(
-		t,
-		"HL_TEST_WITHDRAW_DESTINATION",
-		"HL_TEST_WITHDRAW_AMOUNT",
-		"HL_TEST_SEND_ASSET_DESTINATION",
-		"HL_TEST_SEND_ASSET_TOKEN",
-		"HL_TEST_SEND_ASSET_AMOUNT",
-		"HL_TEST_SET_ABSTRACTION_USER",
-		"HL_TEST_SET_ABSTRACTION_VALUE",
-	)
+	requireIntegrationLivePrivateKey(t)
+	cfg := requireIntegrationLiveOneWayConfig(t)
 
 	t.Log("step 1: live withdraw")
 	stdout, stderr, code := runIntegrationHLGOWithRetry(t,
 		"account", "withdraw",
-		"--destination", req["HL_TEST_WITHDRAW_DESTINATION"],
-		"--amount", req["HL_TEST_WITHDRAW_AMOUNT"],
+		"--destination", cfg.Withdraw.Destination,
+		"--amount", cfg.Withdraw.Amount,
 		"--confirm",
 	)
 	assertNoSecretLeak(t, stdout, stderr)
@@ -1226,9 +1366,9 @@ func TestIntegration_AccountLiveOneWayOperations(t *testing.T) {
 	t.Log("step 2: live send-asset")
 	stdout, stderr, code = runIntegrationHLGOWithRetry(t,
 		"account", "send-asset",
-		"--destination", req["HL_TEST_SEND_ASSET_DESTINATION"],
-		"--token", req["HL_TEST_SEND_ASSET_TOKEN"],
-		"--amount", req["HL_TEST_SEND_ASSET_AMOUNT"],
+		"--destination", cfg.SendAsset.Destination,
+		"--token", cfg.SendAsset.Token,
+		"--amount", cfg.SendAsset.Amount,
 		"--confirm",
 	)
 	assertNoSecretLeak(t, stdout, stderr)
@@ -1245,8 +1385,8 @@ func TestIntegration_AccountLiveOneWayOperations(t *testing.T) {
 	t.Log("step 3: live set-abstraction")
 	stdout, stderr, code = runIntegrationHLGOWithRetry(t,
 		"account", "set-abstraction",
-		"--user", req["HL_TEST_SET_ABSTRACTION_USER"],
-		"--abstraction", req["HL_TEST_SET_ABSTRACTION_VALUE"],
+		"--user", cfg.SetAbstraction.User,
+		"--abstraction", cfg.SetAbstraction.Value,
 	)
 	assertNoSecretLeak(t, stdout, stderr)
 	if code == 0 {

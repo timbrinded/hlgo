@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -19,12 +18,9 @@ import (
 const agentSimulationTimeout = 3 * time.Minute
 
 func TestE2E_AgentSimulation(t *testing.T) {
-	privateKey := strings.TrimSpace(os.Getenv("HL_TEST_PRIVATE_KEY"))
-	if privateKey == "" {
+	if fundedE2EPrivateKey() == "" {
 		t.Skip("skipping agent simulation: set HL_TEST_PRIVATE_KEY")
 	}
-
-	t.Setenv("HL_PRIVATE_KEY", privateKey)
 
 	start := time.Now()
 	assertWithinTimeout := func(step string) {
