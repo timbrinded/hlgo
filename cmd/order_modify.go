@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/shopspring/decimal"
 	"github.com/spf13/cobra"
 
 	"github.com/timbrinded/hlgo/pkg/config"
@@ -20,98 +19,37 @@ func newOrderModifyCmd() *cobra.Command {
 		Short: "Modify an existing order",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			coin, _ := cmd.Flags().GetString("coin")                     //nolint:errcheck // known flag
-			oidStr, _ := cmd.Flags().GetString("oid")                    //nolint:errcheck // known flag
-			side, _ := cmd.Flags().GetString("side")                     //nolint:errcheck // known flag
-			priceStr, _ := cmd.Flags().GetString("price")                //nolint:errcheck // known flag
-			sizeStr, _ := cmd.Flags().GetString("size")                  //nolint:errcheck // known flag
-			tifFlag, _ := cmd.Flags().GetString("tif")                   //nolint:errcheck // known flag
-			reduce, _ := cmd.Flags().GetBool("reduce")                   //nolint:errcheck // known flag
-			onBehalfOf, _ := cmd.Flags().GetString("on-behalf-of")       //nolint:errcheck // known flag
-			expiresAfterStr, _ := cmd.Flags().GetString("expires-after") //nolint:errcheck // known flag
+			coin, _ := cmd.Flags().GetString("coin")               //nolint:errcheck // known flag
+			oidStr, _ := cmd.Flags().GetString("oid")              //nolint:errcheck // known flag
+			sideFlag, _ := cmd.Flags().GetString("side")           //nolint:errcheck // known flag
+			priceStr, _ := cmd.Flags().GetString("price")          //nolint:errcheck // known flag
+			sizeStr, _ := cmd.Flags().GetString("size")            //nolint:errcheck // known flag
+			tifFlag, _ := cmd.Flags().GetString("tif")             //nolint:errcheck // known flag
+			reduce, _ := cmd.Flags().GetBool("reduce")             //nolint:errcheck // known flag
+			onBehalfOf, _ := cmd.Flags().GetString("on-behalf-of") //nolint:errcheck // known flag
 
-			side = strings.ToLower(side)
-			if side != "buy" && side != "sell" {
-				return output.NewCLIError(output.ErrValidation, "side must be 'buy' or 'sell'").
-					WithDetails("value", side)
-			}
-
-			oid, err := strconv.ParseUint(oidStr, 10, 64)
+			input, err := parseModifyBaseInput(coin, oidStr, sideFlag, tifFlag, reduce, cfg.DryRun)
 			if err != nil {
-				return output.NewCLIError(output.ErrValidation, "invalid OID: must be numeric").
-					WithDetails("value", oidStr)
+				return err
 			}
-
-			wireTif, ok := tifMap[strings.ToLower(tifFlag)]
-			if !ok {
-				return output.NewCLIError(output.ErrValidation, "invalid tif: "+tifFlag).
-					WithDetails("value", tifFlag).
-					WithDetails("valid", "gtc, ioc, alo")
-			}
-
-			hasPrice := cmd.Flags().Changed("price")
-			hasSize := cmd.Flags().Changed("size")
-			if !hasPrice && !hasSize {
-				return output.NewCLIError(output.ErrValidation, "at least one of --price or --size is required")
-			}
-
-			if onBehalfOf != "" && !common.IsHexAddress(onBehalfOf) {
-				return output.NewCLIError(output.ErrValidation, "invalid on-behalf-of address").
-					WithDetails("on_behalf_of", onBehalfOf)
-			}
-
-			if !hasPrice || !hasSize {
-				existing, err := lookupOpenOrderByOID(cmd, cfg, oid, coin, onBehalfOf)
-				if err != nil {
-					return err
-				}
-				if !hasPrice {
-					priceStr = existing.LimitPx
-				}
-				if !hasSize {
-					sizeStr = existing.Sz
-				}
-			}
-
-			price, err := decimal.NewFromString(priceStr)
+			priceStr, sizeStr, err = backfillModifyPriceSize(cmd, cfg, input.Oid, coin, onBehalfOf, priceStr, sizeStr)
 			if err != nil {
-				return output.NewCLIError(output.ErrValidation, "invalid price").
-					WithDetails("value", priceStr)
+				return err
 			}
-			size, err := decimal.NewFromString(sizeStr)
-			if err != nil {
-				return output.NewCLIError(output.ErrValidation, "invalid size").
-					WithDetails("value", sizeStr)
+			if input.Price, err = parseDecimalField("price", priceStr); err != nil {
+				return err
 			}
-
-			var expiresAfter *int64
-			if expiresAfterStr != "" {
-				ms, err := parseTimeFlag(expiresAfterStr)
-				if err != nil {
-					return err
-				}
-				if ms <= 0 {
-					return output.NewCLIError(output.ErrValidation, "expires-after must be a positive Unix ms timestamp")
-				}
-				expiresAfter = &ms
+			if input.Size, err = parseDecimalField("size", sizeStr); err != nil {
+				return err
 			}
-
+			if input.ExpiresAfter, err = parseOptionalExpiresAfter(cmd); err != nil {
+				return err
+			}
 			exec, err := buildExecutor(cfg)
 			if err != nil {
 				return err
 			}
-
-			result, err := exec.ModifyOrder(cmd.Context(), exchange.ModifyOrderInput{
-				Coin:         coin,
-				Oid:          oid,
-				Side:         side,
-				Price:        price,
-				Size:         size,
-				Tif:          wireTif,
-				ReduceOnly:   reduce,
-				ExpiresAfter: expiresAfter,
-				DryRun:       cfg.DryRun,
-			})
+			result, err := exec.ModifyOrder(cmd.Context(), input)
 			if err != nil {
 				return err
 			}
@@ -130,37 +68,67 @@ func newOrderModifyCmd() *cobra.Command {
 	cmd.Flags().String("on-behalf-of", "", "account address to act on behalf of")
 	cmd.Flags().String("expires-after", "", "expiry timestamp (Unix ms or ISO 8601)")
 
-	for _, required := range []string{"coin", "oid", "side"} {
-		//nolint:errcheck // MarkFlagRequired on known flags never fails
-		cmd.MarkFlagRequired(required)
-	}
+	mustMarkRequiredFlags(cmd, "coin", "oid", "side")
 
 	return cmd
 }
 
-func lookupOpenOrderByOID(cmd *cobra.Command, cfg *config.Config, oid uint64, coin string, onBehalfOf string) (*info.OpenOrder, error) {
-	addr := onBehalfOf
-	if addr == "" {
-		var err error
-		addr, err = info.ResolveUserAddress("", cfg)
+func parseModifyBaseInput(coin, oidStr, sideFlag, tifFlag string, reduce, dryRun bool) (exchange.ModifyOrderInput, error) {
+	var err error
+	input := exchange.ModifyOrderInput{Coin: coin, ReduceOnly: reduce, DryRun: dryRun}
+	input.Side, err = parseOrderSide(sideFlag)
+	if err != nil {
+		return exchange.ModifyOrderInput{}, err
+	}
+	input.Oid, err = strconv.ParseUint(oidStr, 10, 64)
+	if err != nil {
+		return exchange.ModifyOrderInput{}, output.NewCLIError(output.ErrValidation, "invalid OID: must be numeric").
+			WithDetails("value", oidStr)
+	}
+	input.Tif, err = parseOrderTIF(tifFlag)
+	if err != nil {
+		return exchange.ModifyOrderInput{}, err
+	}
+	return input, nil
+}
+
+func backfillModifyPriceSize(cmd *cobra.Command, cfg *config.Config, oid uint64, coin, onBehalfOf, priceStr, sizeStr string) (string, string, error) {
+	hasPrice, hasSize := cmd.Flags().Changed("price"), cmd.Flags().Changed("size")
+	if !hasPrice && !hasSize {
+		return "", "", output.NewCLIError(output.ErrValidation, "at least one of --price or --size is required")
+	}
+	if onBehalfOf != "" && !common.IsHexAddress(onBehalfOf) {
+		return "", "", output.NewCLIError(output.ErrValidation, "invalid on-behalf-of address").
+			WithDetails("on_behalf_of", onBehalfOf)
+	}
+	if !hasPrice || !hasSize {
+		existing, err := lookupOpenOrderByOID(cmd, cfg, oid, coin, onBehalfOf)
 		if err != nil {
-			return nil, err
+			return "", "", err
+		}
+		if !hasPrice {
+			priceStr = existing.LimitPx
+		}
+		if !hasSize {
+			sizeStr = existing.Sz
 		}
 	}
+	return priceStr, sizeStr, nil
+}
 
-	ic := buildInfoClient(cfg)
+func lookupOpenOrderByOID(cmd *cobra.Command, cfg *config.Config, oid uint64, coin string, onBehalfOf string) (*info.OpenOrder, error) {
+	addr, err := info.ResolveUserAddress(onBehalfOf, cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	dex := cfg.Dex
 	if dex == "" {
 		if idx := strings.Index(coin, ":"); idx > 0 {
 			dex = strings.ToLower(strings.TrimSpace(coin[:idx]))
 		}
 	}
-	raw, err := ic.FrontendOpenOrders(cmd.Context(), addr, dex)
-	if err != nil {
-		return nil, err
-	}
-
-	orders, err := info.ParseOpenOrdersResult(raw)
+	_, orders, err := fetchOpenOrders(cmd, cfg, addr, dex)
 	if err != nil {
 		return nil, err
 	}

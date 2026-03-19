@@ -63,10 +63,7 @@ func NewSigner(privateKeyHex string) (*LocalSigner, error) {
 
 	address := crypto.PubkeyToAddress(key.PublicKey)
 
-	return &LocalSigner{
-		key:     key,
-		address: address,
-	}, nil
+	return &LocalSigner{key: key, address: address}, nil
 }
 
 // Address returns the Ethereum address derived from the private key.

@@ -55,125 +55,65 @@ func BuildOrderAction(orders []OrderParams, triggers []*TriggerParams, builder *
 	if hasTrigger {
 		grouping = "normalTpsl"
 	}
-
-	return &OrderAction{
-		Type:     "order",
-		Orders:   wires,
-		Grouping: grouping,
-		Builder:  builder,
-	}
+	return &OrderAction{Type: "order", Orders: wires, Grouping: grouping, Builder: builder}
 }
 
 // BuildCancelAction constructs a CancelAction from cancel wires.
 func BuildCancelAction(cancels []CancelWire) *CancelAction {
-	return &CancelAction{
-		Type:    "cancel",
-		Cancels: cancels,
-	}
+	return &CancelAction{Type: "cancel", Cancels: cancels}
 }
 
 // BuildCancelByCloidAction constructs a CancelByCloidAction from cancel-by-cloid wires.
 func BuildCancelByCloidAction(cancels []CancelByCloidWire) *CancelByCloidAction {
-	return &CancelByCloidAction{
-		Type:    "cancelByCloid",
-		Cancels: cancels,
-	}
+	return &CancelByCloidAction{Type: "cancelByCloid", Cancels: cancels}
 }
 
 // BuildUpdateLeverageAction constructs an UpdateLeverageAction.
 func BuildUpdateLeverageAction(assetID int, isCross bool, leverage int) *UpdateLeverageAction {
-	return &UpdateLeverageAction{
-		Type:     "updateLeverage",
-		Asset:    assetID,
-		IsCross:  isCross,
-		Leverage: leverage,
-	}
+	return &UpdateLeverageAction{Type: "updateLeverage", Asset: assetID, IsCross: isCross, Leverage: leverage}
 }
 
 // BuildUpdateIsolatedMarginAction constructs an UpdateIsolatedMarginAction.
 func BuildUpdateIsolatedMarginAction(assetID int, isBuy bool, ntli int64) *UpdateIsolatedMarginAction {
-	return &UpdateIsolatedMarginAction{
-		Type:  "updateIsolatedMargin",
-		Asset: assetID,
-		IsBuy: isBuy,
-		Ntli:  ntli,
-	}
+	return &UpdateIsolatedMarginAction{Type: "updateIsolatedMargin", Asset: assetID, IsBuy: isBuy, Ntli: ntli}
 }
 
 // BuildModifyAction constructs a ModifyAction for a single order modification.
 func BuildModifyAction(oid uint64, order OrderWire) *ModifyAction {
-	return &ModifyAction{
-		Type:  "modify",
-		Oid:   oid,
-		Order: order,
-	}
+	return &ModifyAction{Type: "modify", Oid: oid, Order: order}
 }
 
 // BuildScheduleCancelAction constructs a ScheduleCancelAction (dead man's switch).
 func BuildScheduleCancelAction(cancelTime *int64) *ScheduleCancelAction {
-	return &ScheduleCancelAction{
-		Type: "scheduleCancel",
-		Time: cancelTime,
-	}
+	return &ScheduleCancelAction{Type: "scheduleCancel", Time: cancelTime}
 }
 
 // BuildUSDClassTransferAction constructs a usdClassTransfer user-signed action.
 func BuildUSDClassTransferAction(amount string, toPerp bool, nonce int64) *USDClassTransferAction {
-	return &USDClassTransferAction{
-		Type:   "usdClassTransfer",
-		Amount: amount,
-		ToPerp: toPerp,
-		Nonce:  nonce,
-	}
+	return &USDClassTransferAction{Type: "usdClassTransfer", Amount: amount, ToPerp: toPerp, Nonce: nonce}
 }
 
 // BuildWithdraw3Action constructs a withdraw3 user-signed action.
 func BuildWithdraw3Action(destination, amount string, time int64) *Withdraw3Action {
-	return &Withdraw3Action{
-		Type:        "withdraw3",
-		Destination: destination,
-		Amount:      amount,
-		Time:        time,
-	}
+	return &Withdraw3Action{Type: "withdraw3", Destination: destination, Amount: amount, Time: time}
 }
 
 // BuildClassTransferAction constructs a classTransfer user-signed action.
 func BuildClassTransferAction(amount string, toPerp bool, nonce int64) *ClassTransferAction {
-	return &ClassTransferAction{
-		Type:   "classTransfer",
-		Amount: amount,
-		ToPerp: toPerp,
-		Nonce:  nonce,
-	}
+	return &ClassTransferAction{Type: "classTransfer", Amount: amount, ToPerp: toPerp, Nonce: nonce}
 }
 
 // BuildSpotSendAction constructs a spotSend user-signed action.
 func BuildSpotSendAction(destination, token, amount string, time int64) *SpotSendAction {
-	return &SpotSendAction{
-		Type:        "spotSend",
-		Destination: destination,
-		Token:       token,
-		Amount:      amount,
-		Time:        time,
-	}
+	return &SpotSendAction{Type: "spotSend", Destination: destination, Token: token, Amount: amount, Time: time}
 }
 
 // BuildApproveAgentAction constructs an approveAgent user-signed action.
 func BuildApproveAgentAction(agentAddress, agentName string, nonce int64) *ApproveAgentAction {
-	return &ApproveAgentAction{
-		Type:         "approveAgent",
-		AgentAddress: agentAddress,
-		AgentName:    agentName,
-		Nonce:        nonce,
-	}
+	return &ApproveAgentAction{Type: "approveAgent", AgentAddress: agentAddress, AgentName: agentName, Nonce: nonce}
 }
 
 // BuildUserSetAbstractionAction constructs a userSetAbstraction user-signed action.
 func BuildUserSetAbstractionAction(user, abstraction string, nonce int64) *UserSetAbstractionAction {
-	return &UserSetAbstractionAction{
-		Type:        "userSetAbstraction",
-		User:        user,
-		Abstraction: abstraction,
-		Nonce:       nonce,
-	}
+	return &UserSetAbstractionAction{Type: "userSetAbstraction", User: user, Abstraction: abstraction, Nonce: nonce}
 }

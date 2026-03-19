@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/timbrinded/hlgo/pkg/output"
@@ -42,7 +41,7 @@ type Client struct {
 // NewClient creates a Client targeting baseURL (e.g. "https://api.hyperliquid.xyz").
 // Functional options configure timeout, retries, and other behaviour.
 func NewClient(baseURL string, opts ...Option) *Client {
-	c := &Client{
+	client := &Client{
 		baseURL: baseURL,
 		httpClient: http.Client{
 			Timeout: defaultTimeout,
@@ -50,9 +49,9 @@ func NewClient(baseURL string, opts ...Option) *Client {
 		maxRetries: defaultMaxRetries,
 	}
 	for _, opt := range opts {
-		opt(c)
+		opt(client)
 	}
-	return c
+	return client
 }
 
 // SignatureWire is the structured signature format expected by the /exchange endpoint.
@@ -97,111 +96,6 @@ func (c *Client) PostExchange(ctx context.Context, action any, nonce int64, sign
 		return nil, err
 	}
 	return raw, nil
-}
-
-func validateExchangeResponse(raw json.RawMessage) error {
-	var envelope struct {
-		Status   string          `json:"status"`
-		Response json.RawMessage `json:"response"`
-	}
-
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	if err := dec.Decode(&envelope); err != nil {
-		return output.NewCLIError(output.ErrAPI, "failed to decode exchange response envelope").
-			WithDetails("path", "/exchange").
-			WithDetails("cause", err.Error())
-	}
-
-	if !strings.EqualFold(envelope.Status, "err") {
-		return validateExchangeStatuses(envelope.Status, envelope.Response)
-	}
-
-	cliErr := output.NewCLIError(output.ErrAPI, "exchange returned error status").
-		WithDetails("path", "/exchange").
-		WithDetails("exchange_status", envelope.Status)
-
-	if len(envelope.Response) > 0 {
-		var responseMessage string
-		if err := json.Unmarshal(envelope.Response, &responseMessage); err == nil {
-			cliErr.Message = "exchange error: " + responseMessage
-			cliErr = cliErr.WithDetails("exchange_response", responseMessage)
-		} else {
-			cliErr = cliErr.WithDetails("exchange_response", string(envelope.Response))
-		}
-	}
-
-	return cliErr
-}
-
-func isBenignExchangeStatus(status string) bool {
-	switch normalized := strings.ToLower(strings.Trim(strings.TrimSpace(status), `"`)); normalized {
-	case "", "success", "waitingforfill":
-		return true
-	default:
-		return false
-	}
-}
-
-func validateExchangeStatuses(status string, response json.RawMessage) error {
-	var payload struct {
-		Data struct {
-			Statuses []json.RawMessage `json:"statuses"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(response, &payload); err != nil {
-		return nil
-	}
-	if len(payload.Data.Statuses) == 0 {
-		return nil
-	}
-
-	var errs []string
-	for _, entryRaw := range payload.Data.Statuses {
-		var asString string
-		if err := json.Unmarshal(entryRaw, &asString); err == nil {
-			asString = strings.TrimSpace(asString)
-			if isBenignExchangeStatus(asString) {
-				continue
-			}
-			errs = append(errs, asString)
-			continue
-		}
-
-		var asObject map[string]json.RawMessage
-		if err := json.Unmarshal(entryRaw, &asObject); err != nil {
-			continue
-		}
-
-		rawErr, ok := asObject["error"]
-		if !ok {
-			continue
-		}
-
-		var msg string
-		if err := json.Unmarshal(rawErr, &msg); err == nil && strings.TrimSpace(msg) != "" {
-			if isBenignExchangeStatus(msg) {
-				continue
-			}
-			errs = append(errs, msg)
-			continue
-		}
-
-		rawErrText := strings.TrimSpace(string(rawErr))
-		if isBenignExchangeStatus(rawErrText) {
-			continue
-		}
-		errs = append(errs, rawErrText)
-	}
-
-	if len(errs) == 0 {
-		return nil
-	}
-
-	return output.NewCLIError(output.ErrAPI, "exchange action returned error statuses").
-		WithDetails("path", "/exchange").
-		WithDetails("exchange_status", status).
-		WithDetails("exchange_errors", errs)
 }
 
 // doPost performs a POST request with retry logic for transient errors.
@@ -273,33 +167,15 @@ func (c *Client) executeRequest(ctx context.Context, url, path string, payload [
 			WithDetails("cause", err.Error())
 	}
 
-	if resp.StatusCode == http.StatusTooManyRequests {
-		return nil, &retryableError{
-			err: output.NewCLIError(output.ErrRateLimit, "rate limited by API").
-				WithDetails("path", path).
-				WithDetails("status_code", resp.StatusCode),
-		}
-	}
-
-	if resp.StatusCode >= 400 && resp.StatusCode < 500 {
-		return nil, output.NewCLIError(output.ErrAPI, fmt.Sprintf("API error: %s", string(respBody))).
-			WithDetails("path", path).
-			WithDetails("status_code", resp.StatusCode)
-	}
-
-	if resp.StatusCode >= 500 {
-		return nil, &retryableError{
-			err: output.NewCLIError(output.ErrAPI, fmt.Sprintf("server error: %s", string(respBody))).
-				WithDetails("path", path).
-				WithDetails("status_code", resp.StatusCode),
-		}
+	if err := responseStatusError(path, resp.StatusCode, respBody); err != nil {
+		return nil, err
 	}
 
 	// Decode with UseNumber to preserve financial precision.
 	var result json.RawMessage
-	dec := json.NewDecoder(bytes.NewReader(respBody))
-	dec.UseNumber()
-	if err := dec.Decode(&result); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(respBody))
+	decoder.UseNumber()
+	if err := decoder.Decode(&result); err != nil {
 		return nil, output.NewCLIError(output.ErrAPI, "failed to decode response JSON").
 			WithDetails("path", path).
 			WithDetails("status_code", resp.StatusCode).
@@ -308,6 +184,25 @@ func (c *Client) executeRequest(ctx context.Context, url, path string, payload [
 	}
 
 	return result, nil
+}
+
+func responseStatusError(path string, statusCode int, body []byte) error {
+	switch {
+	case statusCode == http.StatusTooManyRequests:
+		return &retryableError{err: output.NewCLIError(output.ErrRateLimit, "rate limited by API").
+			WithDetails("path", path).
+			WithDetails("status_code", statusCode)}
+	case statusCode >= 500:
+		return &retryableError{err: output.NewCLIError(output.ErrAPI, fmt.Sprintf("server error: %s", string(body))).
+			WithDetails("path", path).
+			WithDetails("status_code", statusCode)}
+	case statusCode >= 400:
+		return output.NewCLIError(output.ErrAPI, fmt.Sprintf("API error: %s", string(body))).
+			WithDetails("path", path).
+			WithDetails("status_code", statusCode)
+	default:
+		return nil
+	}
 }
 
 // retryableError wraps an error to signal that the request may be retried.
@@ -320,8 +215,8 @@ func (e *retryableError) Unwrap() error { return e.err }
 
 // isRetryable reports whether err signals a transient failure worth retrying.
 func isRetryable(err error) bool {
-	var re *retryableError
-	return errors.As(err, &re)
+	var retryable *retryableError
+	return errors.As(err, &retryable)
 }
 
 // recordWeight records API weight and emits a warning if approaching the limit.

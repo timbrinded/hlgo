@@ -1,14 +1,10 @@
 package cmd
 
 import (
-	"strings"
-
-	"github.com/shopspring/decimal"
 	"github.com/spf13/cobra"
 
 	"github.com/timbrinded/hlgo/pkg/config"
 	"github.com/timbrinded/hlgo/pkg/exchange"
-	"github.com/timbrinded/hlgo/pkg/output"
 )
 
 func newPositionMarginCmd() *cobra.Command {
@@ -18,19 +14,17 @@ func newPositionMarginCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
 			coin, _ := cmd.Flags().GetString("coin")        //nolint:errcheck // known flag
-			side, _ := cmd.Flags().GetString("side")        //nolint:errcheck // known flag
+			sideFlag, _ := cmd.Flags().GetString("side")    //nolint:errcheck // known flag
 			amountStr, _ := cmd.Flags().GetString("amount") //nolint:errcheck // known flag
 
-			side = strings.ToLower(side)
-			if side != "buy" && side != "sell" {
-				return output.NewCLIError(output.ErrValidation, "side must be 'buy' or 'sell'").
-					WithDetails("value", side)
+			side, err := parseOrderSide(sideFlag)
+			if err != nil {
+				return err
 			}
 
-			amount, err := decimal.NewFromString(amountStr)
+			amount, err := parseDecimalField("amount", amountStr)
 			if err != nil {
-				return output.NewCLIError(output.ErrValidation, "invalid amount").
-					WithDetails("value", amountStr)
+				return err
 			}
 
 			exec, err := buildExecutor(cfg)
@@ -38,12 +32,8 @@ func newPositionMarginCmd() *cobra.Command {
 				return err
 			}
 
-			result, err := exec.UpdateIsolatedMargin(cmd.Context(), exchange.UpdateIsolatedMarginInput{
-				Coin:   coin,
-				IsBuy:  side == "buy",
-				Amount: amount,
-				DryRun: cfg.DryRun,
-			})
+			input := exchange.UpdateIsolatedMarginInput{Coin: coin, IsBuy: side == "buy", Amount: amount, DryRun: cfg.DryRun}
+			result, err := exec.UpdateIsolatedMargin(cmd.Context(), input)
 			if err != nil {
 				return err
 			}
@@ -56,10 +46,7 @@ func newPositionMarginCmd() *cobra.Command {
 	cmd.Flags().String("side", "", "position side: buy or sell")
 	cmd.Flags().String("amount", "", "margin amount (positive to add, negative to remove)")
 
-	for _, required := range []string{"coin", "side", "amount"} {
-		//nolint:errcheck // MarkFlagRequired on known flags never fails
-		cmd.MarkFlagRequired(required)
-	}
+	mustMarkRequiredFlags(cmd, "coin", "side", "amount")
 
 	return cmd
 }

@@ -68,134 +68,100 @@ func newAgentSnapshotCmd() *cobra.Command {
 		Short: "Aggregate account state into one response",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			address, _ := cmd.Flags().GetString("address") //nolint:errcheck // known flag
 
-			user, err := info.ResolveUserAddress(address, cfg)
+			user, err := resolveAddressFlagUser(cmd, cfg)
 			if err != nil {
 				return err
 			}
 
 			if cfg.DryRun {
-				return printResult(cmd, cfg, mustMarshal(map[string]any{
-					"user": user,
-					"requests": map[string]any{
-						"state": info.ClearinghouseStateRequest{
-							Type: "clearinghouseState",
-							User: user,
-							Dex:  cfg.Dex,
-						},
-						"spot_state": info.SpotClearinghouseStateRequest{
-							Type: "spotClearinghouseState",
-							User: user,
-						},
-						"open_orders": info.FrontendOpenOrdersRequest{
-							Type: "frontendOpenOrders",
-							User: user,
-							Dex:  cfg.Dex,
-						},
-						"fills": info.UserFillsRequest{
-							Type: "userFills",
-							User: user,
-						},
-						"mids": info.AllMidsRequest{
-							Type: "allMids",
-							Dex:  cfg.Dex,
-						},
-					},
-				}), nil)
+				return printResult(cmd, cfg, mustMarshal(snapshotDryRunPayload(user, cfg.Dex)), nil)
 			}
 
-			ic := buildInfoClient(cfg)
-			result := &agentSnapshotResult{
-				PerpPositions: make([]info.AssetPosition, 0),
-				OpenOrders:    make(info.OpenOrdersResult, 0),
-				RecentFills:   make(info.FillsResult, 0),
-				Timestamp:     time.Now().UTC().Format(time.RFC3339),
-			}
-			successCount := 0
-
-			stateRaw, err := ic.ClearinghouseState(cmd.Context(), user, cfg.Dex)
+			result, err := runAgentSnapshot(cmd, cfg, user)
 			if err != nil {
-				result.Errors = append(result.Errors, toAgentStepError("state", err))
-			} else {
-				state, parseErr := info.ParseStateResult(stateRaw)
-				if parseErr != nil {
-					result.Errors = append(result.Errors, toAgentStepError("state", parseErr))
-				} else {
-					result.AccountValue = state.MarginSummary.AccountValue
-					result.PerpPositions = state.AssetPositions
-					successCount++
-				}
+				return err
 			}
-
-			spotRaw, err := ic.SpotClearinghouseState(cmd.Context(), user)
-			if err != nil {
-				result.Errors = append(result.Errors, toAgentStepError("spot-state", err))
-			} else {
-				balances, parseErr := extractSpotBalances(spotRaw)
-				if parseErr != nil {
-					result.Errors = append(result.Errors, toAgentStepError("spot-state", parseErr))
-				} else {
-					result.SpotBalances = balances
-					successCount++
-				}
-			}
-
-			openOrdersRaw, err := ic.FrontendOpenOrders(cmd.Context(), user, cfg.Dex)
-			if err != nil {
-				result.Errors = append(result.Errors, toAgentStepError("open-orders", err))
-			} else {
-				orders, parseErr := info.ParseOpenOrdersResult(openOrdersRaw)
-				if parseErr != nil {
-					result.Errors = append(result.Errors, toAgentStepError("open-orders", parseErr))
-				} else {
-					result.OpenOrders = orders
-					successCount++
-				}
-			}
-
-			fillsRaw, err := ic.UserFills(cmd.Context(), user, nil)
-			if err != nil {
-				result.Errors = append(result.Errors, toAgentStepError("fills", err))
-			} else {
-				fills, parseErr := info.ParseFillsResult(fillsRaw)
-				if parseErr != nil {
-					result.Errors = append(result.Errors, toAgentStepError("fills", parseErr))
-				} else {
-					if len(fills) > 10 {
-						fills = fills[:10]
-					}
-					result.RecentFills = fills
-					successCount++
-				}
-			}
-
-			midsRaw, err := ic.AllMids(cmd.Context(), cfg.Dex)
-			if err != nil {
-				result.Errors = append(result.Errors, toAgentStepError("mids", err))
-			} else {
-				mids, parseErr := info.ParseMidsResult(midsRaw)
-				if parseErr != nil {
-					result.Errors = append(result.Errors, toAgentStepError("mids", parseErr))
-				} else {
-					result.MidPrices = mids
-					successCount++
-				}
-			}
-
-			if successCount == 0 {
-				return output.NewCLIError(output.ErrAPI, "agent snapshot failed: all subqueries failed").
-					WithDetails("errors", result.Errors)
-			}
-
-			result.Partial = len(result.Errors) > 0
-
 			return printResult(cmd, cfg, mustMarshal(result), agentSnapshotTable{result: result})
 		},
 	}
 
 	cmd.Flags().String("address", "", "user address (default: derived from configured private key)")
 	return cmd
+}
+
+func snapshotDryRunPayload(user, dex string) map[string]any {
+	return map[string]any{
+		"user": user,
+		"requests": map[string]any{
+			"state":       info.ClearinghouseStateRequest{Type: "clearinghouseState", User: user, Dex: dex},
+			"spot_state":  info.SpotClearinghouseStateRequest{Type: "spotClearinghouseState", User: user},
+			"open_orders": info.FrontendOpenOrdersRequest{Type: "frontendOpenOrders", User: user, Dex: dex},
+			"fills":       info.UserFillsRequest{Type: "userFills", User: user},
+			"mids":        info.AllMidsRequest{Type: "allMids", Dex: dex},
+		},
+	}
+}
+
+func runAgentSnapshot(cmd *cobra.Command, cfg *config.Config, user string) (*agentSnapshotResult, error) {
+	ic := buildInfoClient(cfg)
+	result := &agentSnapshotResult{PerpPositions: make([]info.AssetPosition, 0), OpenOrders: make(info.OpenOrdersResult, 0), RecentFills: make(info.FillsResult, 0), Timestamp: time.Now().UTC().Format(time.RFC3339)}
+	successCount := 0
+
+	_, state, err := fetchPerpState(cmd.Context(), cfg, user, cfg.Dex)
+	if err != nil {
+		result.Errors = append(result.Errors, toAgentStepError("state", err))
+	} else {
+		result.AccountValue = state.MarginSummary.AccountValue
+		result.PerpPositions = state.AssetPositions
+		successCount++
+	}
+
+	spotRaw, err := ic.SpotClearinghouseState(cmd.Context(), user)
+	if err != nil {
+		result.Errors = append(result.Errors, toAgentStepError("spot-state", err))
+	} else if balances, parseErr := extractSpotBalances(spotRaw); parseErr != nil {
+		result.Errors = append(result.Errors, toAgentStepError("spot-state", parseErr))
+	} else {
+		result.SpotBalances = balances
+		successCount++
+	}
+
+	_, orders, err := fetchOpenOrders(cmd, cfg, user, cfg.Dex)
+	if err != nil {
+		result.Errors = append(result.Errors, toAgentStepError("open-orders", err))
+	} else {
+		result.OpenOrders = orders
+		successCount++
+	}
+
+	fillsRaw, err := ic.UserFills(cmd.Context(), user, nil)
+	if err != nil {
+		result.Errors = append(result.Errors, toAgentStepError("fills", err))
+	} else if fills, parseErr := info.ParseFillsResult(fillsRaw); parseErr != nil {
+		result.Errors = append(result.Errors, toAgentStepError("fills", parseErr))
+	} else {
+		if len(fills) > 10 {
+			fills = fills[:10]
+		}
+		result.RecentFills = fills
+		successCount++
+	}
+
+	_, mids, err := fetchMids(cmd.Context(), cfg, cfg.Dex)
+	if err != nil {
+		result.Errors = append(result.Errors, toAgentStepError("mids", err))
+	} else {
+		result.MidPrices = mids
+		successCount++
+	}
+	if successCount == 0 {
+		return nil, output.NewCLIError(output.ErrAPI, "agent snapshot failed: all subqueries failed").
+			WithDetails("errors", result.Errors)
+	}
+
+	result.Partial = len(result.Errors) > 0
+	return result, nil
 }
 
 func toAgentStepError(step string, err error) agentStepError {
@@ -208,19 +174,10 @@ func toAgentStepError(step string, err error) agentStepError {
 				details[k] = v
 			}
 		}
-		return agentStepError{
-			Step:    step,
-			Code:    cliErr.Code,
-			Error:   cliErr.Message,
-			Details: details,
-		}
+		return agentStepError{Step: step, Code: cliErr.Code, Error: cliErr.Message, Details: details}
 	}
 
-	return agentStepError{
-		Step:  step,
-		Code:  output.ErrAPI,
-		Error: err.Error(),
-	}
+	return agentStepError{Step: step, Code: output.ErrAPI, Error: err.Error()}
 }
 
 func extractSpotBalances(raw json.RawMessage) (any, error) {

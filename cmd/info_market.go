@@ -10,11 +10,13 @@ import (
 	"github.com/timbrinded/hlgo/pkg/output"
 )
 
-// validCandleIntervals is the set of intervals accepted by the candle API.
-var validCandleIntervals = map[string]bool{
-	"1m": true, "3m": true, "5m": true, "15m": true, "30m": true,
-	"1h": true, "2h": true, "4h": true, "8h": true, "12h": true,
-	"1d": true, "3d": true, "1w": true, "1M": true,
+func isValidCandleInterval(interval string) bool {
+	switch interval {
+	case "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "8h", "12h", "1d", "3d", "1w", "1M":
+		return true
+	default:
+		return false
+	}
 }
 
 func newInfoMidsCmd() *cobra.Command {
@@ -23,26 +25,19 @@ func newInfoMidsCmd() *cobra.Command {
 		Short: "Get all mid-market prices",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			ic := buildInfoClient(cfg)
 			dex, _ := cmd.Flags().GetString("dex") //nolint:errcheck // known flag
 
 			if cfg.DryRun {
 				return printResult(cmd, cfg, mustMarshal(info.AllMidsRequest{Type: "allMids", Dex: dex}), nil)
 			}
 
-			raw, err := ic.AllMids(cmd.Context(), dex)
-			if err != nil {
-				return err
-			}
-
-			result, err := info.ParseMidsResult(raw)
+			raw, result, err := fetchMids(cmd.Context(), cfg, dex)
 			if err != nil {
 				return err
 			}
 			return printResult(cmd, cfg, raw, result)
 		},
 	}
-	cmd.Flags().String("dex", "", "HIP-3 perp dex name")
 	return cmd
 }
 
@@ -78,7 +73,6 @@ func newInfoMetaCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().Bool("spot", false, "fetch spot metadata instead of perp")
-	cmd.Flags().String("dex", "", "HIP-3 perp dex name")
 	return cmd
 }
 
@@ -114,7 +108,6 @@ func newInfoMetaAndCtxsCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().Bool("spot", false, "fetch spot metadata instead of perp")
-	cmd.Flags().String("dex", "", "HIP-3 perp dex name")
 	return cmd
 }
 
@@ -125,39 +118,17 @@ func newInfoBookCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.FromContext(cmd.Context())
-			ic := buildInfoClient(cfg)
 			coin := args[0]
-			sigfigs, _ := cmd.Flags().GetInt("sigfigs")   //nolint:errcheck // known flag
-			depth, _ := cmd.Flags().GetInt("depth")       //nolint:errcheck // known flag
-			mantissa, _ := cmd.Flags().GetInt("mantissa") //nolint:errcheck // known flag
-
-			var nSigFigs *int
-			if cmd.Flags().Changed("sigfigs") {
-				nSigFigs = &sigfigs
-			}
-
-			var mantissaPtr *int
-			if cmd.Flags().Changed("mantissa") {
-				if !cmd.Flags().Changed("sigfigs") || sigfigs != 5 {
-					return output.NewCLIError(output.ErrValidation, "mantissa requires --sigfigs 5")
-				}
-				if mantissa != 1 && mantissa != 2 && mantissa != 5 {
-					return output.NewCLIError(output.ErrValidation, "mantissa must be one of 1, 2, or 5").
-						WithDetails("mantissa", mantissa)
-				}
-				mantissaPtr = &mantissa
+			depth, nSigFigs, mantissaPtr, err := parseBookAggregation(cmd)
+			if err != nil {
+				return err
 			}
 
 			if cfg.DryRun {
-				return printResult(cmd, cfg, mustMarshal(info.L2BookRequest{
-					Type:     "l2Book",
-					Coin:     coin,
-					NSigFigs: nSigFigs,
-					Mantissa: mantissaPtr,
-				}), nil)
+				return printResult(cmd, cfg, mustMarshal(info.L2BookRequest{Type: "l2Book", Coin: coin, NSigFigs: nSigFigs, Mantissa: mantissaPtr}), nil)
 			}
 
-			raw, err := ic.L2Book(cmd.Context(), coin, nSigFigs, mantissaPtr)
+			raw, err := buildInfoClient(cfg).L2Book(cmd.Context(), coin, nSigFigs, mantissaPtr)
 			if err != nil {
 				return err
 			}
@@ -185,6 +156,28 @@ func newInfoBookCmd() *cobra.Command {
 	return cmd
 }
 
+func parseBookAggregation(cmd *cobra.Command) (depth int, nSigFigs, mantissa *int, err error) {
+	sigfigs, _ := cmd.Flags().GetInt("sigfigs")        //nolint:errcheck // known flag
+	depth, _ = cmd.Flags().GetInt("depth")             //nolint:errcheck // known flag
+	mantissaValue, _ := cmd.Flags().GetInt("mantissa") //nolint:errcheck // known flag
+
+	if cmd.Flags().Changed("sigfigs") {
+		nSigFigs = &sigfigs
+	}
+	if !cmd.Flags().Changed("mantissa") {
+		return depth, nSigFigs, nil, nil
+	}
+	if !cmd.Flags().Changed("sigfigs") || sigfigs != 5 {
+		return 0, nil, nil, output.NewCLIError(output.ErrValidation, "mantissa requires --sigfigs 5")
+	}
+	if mantissaValue != 1 && mantissaValue != 2 && mantissaValue != 5 {
+		return 0, nil, nil, output.NewCLIError(output.ErrValidation, "mantissa must be one of 1, 2, or 5").
+			WithDetails("mantissa", mantissaValue)
+	}
+	mantissa = &mantissaValue
+	return depth, nSigFigs, mantissa, nil
+}
+
 func newInfoTradesCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "trades <coin>",
@@ -192,14 +185,13 @@ func newInfoTradesCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.FromContext(cmd.Context())
-			ic := buildInfoClient(cfg)
 			coin := args[0]
 
 			if cfg.DryRun {
 				return printResult(cmd, cfg, mustMarshal(info.RecentTradesRequest{Type: "recentTrades", Coin: coin}), nil)
 			}
 
-			raw, err := ic.RecentTrades(cmd.Context(), coin)
+			raw, err := buildInfoClient(cfg).RecentTrades(cmd.Context(), coin)
 			if err != nil {
 				return err
 			}
@@ -225,47 +217,22 @@ func newInfoCandlesCmd() *cobra.Command {
 			coin := args[0]
 			interval := args[1]
 
-			if !validCandleIntervals[interval] {
+			if !isValidCandleInterval(interval) {
 				return output.NewCLIError(output.ErrValidation, "invalid candle interval: "+interval).
 					WithDetails("interval", interval).
 					WithDetails("valid", "1m,3m,5m,15m,30m,1h,2h,4h,8h,12h,1d,3d,1w,1M")
 			}
 
-			ic := buildInfoClient(cfg)
-			startStr, _ := cmd.Flags().GetString("start") //nolint:errcheck // known flag
-			endStr, _ := cmd.Flags().GetString("end")     //nolint:errcheck // known flag
-
-			startTime, err := parseTimeFlag(startStr)
+			startTime, endTime, err := resolveCandleTimeRange(cmd)
 			if err != nil {
 				return err
-			}
-			endTime, err := parseTimeFlag(endStr)
-			if err != nil {
-				return err
-			}
-
-			// Default: last 24 hours.
-			if startTime == 0 {
-				startTime = time.Now().Add(-24 * time.Hour).UnixMilli()
-			}
-			if endTime == 0 {
-				endTime = time.Now().UnixMilli()
 			}
 
 			if cfg.DryRun {
-				req := info.CandleSnapshotRequest{
-					Type: "candleSnapshot",
-					Req: info.CandleSnapshotReq{
-						Coin:      coin,
-						Interval:  interval,
-						StartTime: startTime,
-						EndTime:   endTime,
-					},
-				}
-				return printResult(cmd, cfg, mustMarshal(req), nil)
+				return printResult(cmd, cfg, mustMarshal(info.CandleSnapshotRequest{Type: "candleSnapshot", Req: info.CandleSnapshotReq{Coin: coin, Interval: interval, StartTime: startTime, EndTime: endTime}}), nil)
 			}
 
-			raw, err := ic.CandleSnapshot(cmd.Context(), coin, interval, startTime, endTime)
+			raw, err := buildInfoClient(cfg).CandleSnapshot(cmd.Context(), coin, interval, startTime, endTime)
 			if err != nil {
 				return err
 			}
@@ -280,4 +247,25 @@ func newInfoCandlesCmd() *cobra.Command {
 	cmd.Flags().String("start", "", "start time (Unix ms or ISO 8601)")
 	cmd.Flags().String("end", "", "end time (Unix ms or ISO 8601)")
 	return cmd
+}
+
+func resolveCandleTimeRange(cmd *cobra.Command) (int64, int64, error) {
+	startText, _ := cmd.Flags().GetString("start") //nolint:errcheck // known flag
+	endText, _ := cmd.Flags().GetString("end")     //nolint:errcheck // known flag
+
+	startTime, err := parseTimeFlag(startText)
+	if err != nil {
+		return 0, 0, err
+	}
+	endTime, err := parseTimeFlag(endText)
+	if err != nil {
+		return 0, 0, err
+	}
+	if startTime == 0 {
+		startTime = time.Now().Add(-24 * time.Hour).UnixMilli()
+	}
+	if endTime == 0 {
+		endTime = time.Now().UnixMilli()
+	}
+	return startTime, endTime, nil
 }

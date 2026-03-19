@@ -52,10 +52,7 @@ func (c *diskCache) write(filename string, data []byte, now time.Time) {
 		return
 	}
 
-	entry := cacheEntry{
-		Timestamp: now,
-		Data:      data,
-	}
+	entry := cacheEntry{Timestamp: now, Data: data}
 	raw, err := json.Marshal(entry)
 	if err != nil {
 		return
