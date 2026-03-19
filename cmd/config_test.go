@@ -112,6 +112,8 @@ func TestConfigInit_WarnsOnMissingEnv(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
 
+	t.Setenv("HL_PRIVATE_KEY", "")
+
 	root := NewRootCommand(BuildInfo{Version: "test"})
 	stderr := new(bytes.Buffer)
 	root.SetErr(stderr)
