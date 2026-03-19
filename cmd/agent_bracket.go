@@ -1,14 +1,10 @@
 package cmd
 
 import (
-	"strings"
-
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/shopspring/decimal"
 	"github.com/spf13/cobra"
 
 	"github.com/timbrinded/hlgo/pkg/config"
-	"github.com/timbrinded/hlgo/pkg/exchange"
 	"github.com/timbrinded/hlgo/pkg/output"
 )
 
@@ -18,113 +14,22 @@ func newAgentBracketCmd() *cobra.Command {
 		Short: "Place entry + TP + SL in one grouped order action",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			coin, _ := cmd.Flags().GetString("coin")                             //nolint:errcheck // known flag
-			side, _ := cmd.Flags().GetString("side")                             //nolint:errcheck // known flag
-			priceStr, _ := cmd.Flags().GetString("price")                        //nolint:errcheck // known flag
-			sizeStr, _ := cmd.Flags().GetString("size")                          //nolint:errcheck // known flag
-			tpStr, _ := cmd.Flags().GetString("tp")                              //nolint:errcheck // known flag
-			slStr, _ := cmd.Flags().GetString("sl")                              //nolint:errcheck // known flag
-			tifFlag, _ := cmd.Flags().GetString("tif")                           //nolint:errcheck // known flag
-			cloidStr, _ := cmd.Flags().GetString("cloid")                        //nolint:errcheck // known flag
-			builderAddr, _ := cmd.Flags().GetString("builder")                   //nolint:errcheck // known flag
-			builderFeeTenthsBp, _ := cmd.Flags().GetInt("builder-fee-tenths-bp") //nolint:errcheck // known flag
-			expiresAfterStr, _ := cmd.Flags().GetString("expires-after")         //nolint:errcheck // known flag
+			coin, _ := cmd.Flags().GetString("coin")      //nolint:errcheck // known flag
+			sideFlag, _ := cmd.Flags().GetString("side")  //nolint:errcheck // known flag
+			priceStr, _ := cmd.Flags().GetString("price") //nolint:errcheck // known flag
+			sizeStr, _ := cmd.Flags().GetString("size")   //nolint:errcheck // known flag
+			tpStr, _ := cmd.Flags().GetString("tp")       //nolint:errcheck // known flag
+			slStr, _ := cmd.Flags().GetString("sl")       //nolint:errcheck // known flag
+			tifFlag, _ := cmd.Flags().GetString("tif")    //nolint:errcheck // known flag
+			cloidStr, _ := cmd.Flags().GetString("cloid") //nolint:errcheck // known flag
 
-			side = strings.ToLower(side)
-			if side != "buy" && side != "sell" {
-				return output.NewCLIError(output.ErrValidation, "side must be 'buy' or 'sell'").
-					WithDetails("value", side)
-			}
-
-			price, err := decimal.NewFromString(priceStr)
+			input, err := buildPlaceOrderInput(cmd, coin, sideFlag, priceStr, sizeStr, tifFlag, false, cloidStr, cfg.DryRun)
 			if err != nil {
-				return output.NewCLIError(output.ErrValidation, "invalid price").
-					WithDetails("value", priceStr)
+				return err
 			}
-			size, err := decimal.NewFromString(sizeStr)
+			input.TpTrigger, input.SlTrigger, err = parseBracketTriggers(input.Side, input.Price, tpStr, slStr)
 			if err != nil {
-				return output.NewCLIError(output.ErrValidation, "invalid size").
-					WithDetails("value", sizeStr)
-			}
-			tp, err := decimal.NewFromString(tpStr)
-			if err != nil {
-				return output.NewCLIError(output.ErrValidation, "invalid tp").
-					WithDetails("value", tpStr)
-			}
-			sl, err := decimal.NewFromString(slStr)
-			if err != nil {
-				return output.NewCLIError(output.ErrValidation, "invalid sl").
-					WithDetails("value", slStr)
-			}
-
-			wireTif, ok := tifMap[strings.ToLower(tifFlag)]
-			if !ok {
-				return output.NewCLIError(output.ErrValidation, "invalid tif: "+tifFlag).
-					WithDetails("value", tifFlag).
-					WithDetails("valid", "gtc, ioc, alo")
-			}
-
-			if side == "buy" {
-				if !tp.GreaterThan(price) {
-					return output.NewCLIError(output.ErrValidation, "for buy brackets, tp must be greater than entry price").
-						WithDetails("price", price.String()).
-						WithDetails("tp", tp.String())
-				}
-				if !sl.LessThan(price) {
-					return output.NewCLIError(output.ErrValidation, "for buy brackets, sl must be less than entry price").
-						WithDetails("price", price.String()).
-						WithDetails("sl", sl.String())
-				}
-			} else {
-				if !tp.LessThan(price) {
-					return output.NewCLIError(output.ErrValidation, "for sell brackets, tp must be less than entry price").
-						WithDetails("price", price.String()).
-						WithDetails("tp", tp.String())
-				}
-				if !sl.GreaterThan(price) {
-					return output.NewCLIError(output.ErrValidation, "for sell brackets, sl must be greater than entry price").
-						WithDetails("price", price.String()).
-						WithDetails("sl", sl.String())
-				}
-			}
-
-			var cloid *string
-			if cloidStr != "" {
-				cloid = &cloidStr
-			}
-
-			changedBuilder := cmd.Flags().Changed("builder")
-			changedBuilderFee := cmd.Flags().Changed("builder-fee-tenths-bp")
-			if changedBuilder != changedBuilderFee {
-				return output.NewCLIError(output.ErrValidation, "--builder and --builder-fee-tenths-bp must be provided together")
-			}
-
-			var builder *exchange.BuilderInfo
-			if changedBuilder {
-				if !common.IsHexAddress(builderAddr) {
-					return output.NewCLIError(output.ErrValidation, "invalid builder address").
-						WithDetails("builder", builderAddr)
-				}
-				if builderFeeTenthsBp < 0 {
-					return output.NewCLIError(output.ErrValidation, "builder fee must be non-negative").
-						WithDetails("builder_fee_tenths_bp", builderFeeTenthsBp)
-				}
-				builder = &exchange.BuilderInfo{
-					B: strings.ToLower(builderAddr),
-					F: builderFeeTenthsBp,
-				}
-			}
-
-			var expiresAfter *int64
-			if expiresAfterStr != "" {
-				ms, err := parseTimeFlag(expiresAfterStr)
-				if err != nil {
-					return err
-				}
-				if ms <= 0 {
-					return output.NewCLIError(output.ErrValidation, "expires-after must be a positive Unix ms timestamp")
-				}
-				expiresAfter = &ms
+				return err
 			}
 
 			exec, err := buildExecutor(cfg)
@@ -132,21 +37,7 @@ func newAgentBracketCmd() *cobra.Command {
 				return err
 			}
 
-			tpTrigger := tp.String()
-			slTrigger := sl.String()
-			result, err := exec.PlaceOrder(cmd.Context(), exchange.PlaceOrderInput{
-				Coin:         coin,
-				Side:         side,
-				Price:        price,
-				Size:         size,
-				Tif:          wireTif,
-				Cloid:        cloid,
-				TpTrigger:    &tpTrigger,
-				SlTrigger:    &slTrigger,
-				Builder:      builder,
-				ExpiresAfter: expiresAfter,
-				DryRun:       cfg.DryRun,
-			})
+			result, err := exec.PlaceOrder(cmd.Context(), input)
 			if err != nil {
 				return err
 			}
@@ -167,10 +58,34 @@ func newAgentBracketCmd() *cobra.Command {
 	cmd.Flags().Int("builder-fee-tenths-bp", 0, "builder fee in tenths of a basis point (requires --builder)")
 	cmd.Flags().String("expires-after", "", "expiry timestamp (Unix ms or ISO 8601)")
 
-	for _, required := range []string{"coin", "side", "price", "size", "tp", "sl"} {
-		//nolint:errcheck // MarkFlagRequired on known flags never fails
-		cmd.MarkFlagRequired(required)
-	}
+	mustMarkRequiredFlags(cmd, "coin", "side", "price", "size", "tp", "sl")
 
 	return cmd
+}
+
+func parseBracketTriggers(side string, price decimal.Decimal, tpStr, slStr string) (*string, *string, error) {
+	tp, err := parseDecimalField("tp", tpStr)
+	if err != nil {
+		return nil, nil, err
+	}
+	sl, err := parseDecimalField("sl", slStr)
+	if err != nil {
+		return nil, nil, err
+	}
+	if side == "buy" {
+		if !tp.GreaterThan(price) {
+			return nil, nil, output.NewCLIError(output.ErrValidation, "for buy brackets, tp must be greater than entry price").WithDetails("price", price.String()).WithDetails("tp", tp.String())
+		}
+		if !sl.LessThan(price) {
+			return nil, nil, output.NewCLIError(output.ErrValidation, "for buy brackets, sl must be less than entry price").WithDetails("price", price.String()).WithDetails("sl", sl.String())
+		}
+	} else {
+		if !tp.LessThan(price) {
+			return nil, nil, output.NewCLIError(output.ErrValidation, "for sell brackets, tp must be less than entry price").WithDetails("price", price.String()).WithDetails("tp", tp.String())
+		}
+		if !sl.GreaterThan(price) {
+			return nil, nil, output.NewCLIError(output.ErrValidation, "for sell brackets, sl must be greater than entry price").WithDetails("price", price.String()).WithDetails("sl", sl.String())
+		}
+	}
+	return stringPointer(tp.String()), stringPointer(sl.String()), nil
 }

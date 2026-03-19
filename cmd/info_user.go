@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -15,27 +16,18 @@ func newInfoStateCmd() *cobra.Command {
 		Short: "Get perp clearinghouse state (positions, margins)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			addr, _ := cmd.Flags().GetString("address") //nolint:errcheck // known flag //nolint:errcheck // known flag
-			dex, _ := cmd.Flags().GetString("dex")      //nolint:errcheck // known flag
+			dex, _ := cmd.Flags().GetString("dex") //nolint:errcheck // known flag
 
-			user, err := info.ResolveUserAddress(addr, cfg)
+			user, err := resolveAddressFlagUser(cmd, cfg)
 			if err != nil {
 				return err
 			}
 
 			if cfg.DryRun {
-				return printResult(cmd, cfg, mustMarshal(info.ClearinghouseStateRequest{
-					Type: "clearinghouseState", User: user, Dex: dex,
-				}), nil)
+				return printResult(cmd, cfg, mustMarshal(info.ClearinghouseStateRequest{Type: "clearinghouseState", User: user, Dex: dex}), nil)
 			}
 
-			ic := buildInfoClient(cfg)
-			raw, err := ic.ClearinghouseState(cmd.Context(), user, dex)
-			if err != nil {
-				return err
-			}
-
-			result, err := info.ParseStateResult(raw)
+			raw, result, err := fetchPerpState(cmd.Context(), cfg, user, dex)
 			if err != nil {
 				return err
 			}
@@ -43,7 +35,6 @@ func newInfoStateCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().String("address", "", "user address (default: derived from configured private key)")
-	cmd.Flags().String("dex", "", "HIP-3 perp dex name")
 	return cmd
 }
 
@@ -53,21 +44,17 @@ func newInfoSpotStateCmd() *cobra.Command {
 		Short: "Get spot clearinghouse state",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			addr, _ := cmd.Flags().GetString("address") //nolint:errcheck // known flag
 
-			user, err := info.ResolveUserAddress(addr, cfg)
+			user, err := resolveAddressFlagUser(cmd, cfg)
 			if err != nil {
 				return err
 			}
 
 			if cfg.DryRun {
-				return printResult(cmd, cfg, mustMarshal(info.SpotClearinghouseStateRequest{
-					Type: "spotClearinghouseState", User: user,
-				}), nil)
+				return printResult(cmd, cfg, mustMarshal(info.SpotClearinghouseStateRequest{Type: "spotClearinghouseState", User: user}), nil)
 			}
 
-			ic := buildInfoClient(cfg)
-			raw, err := ic.SpotClearinghouseState(cmd.Context(), user)
+			raw, err := buildInfoClient(cfg).SpotClearinghouseState(cmd.Context(), user)
 			if err != nil {
 				return err
 			}
@@ -84,27 +71,18 @@ func newInfoOpenOrdersCmd() *cobra.Command {
 		Short: "Get open orders for a user",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			addr, _ := cmd.Flags().GetString("address") //nolint:errcheck // known flag
-			dex, _ := cmd.Flags().GetString("dex")      //nolint:errcheck // known flag
+			dex, _ := cmd.Flags().GetString("dex") //nolint:errcheck // known flag
 
-			user, err := info.ResolveUserAddress(addr, cfg)
+			user, err := resolveAddressFlagUser(cmd, cfg)
 			if err != nil {
 				return err
 			}
 
 			if cfg.DryRun {
-				return printResult(cmd, cfg, mustMarshal(info.FrontendOpenOrdersRequest{
-					Type: "frontendOpenOrders", User: user, Dex: dex,
-				}), nil)
+				return printResult(cmd, cfg, mustMarshal(info.FrontendOpenOrdersRequest{Type: "frontendOpenOrders", User: user, Dex: dex}), nil)
 			}
 
-			ic := buildInfoClient(cfg)
-			raw, err := ic.FrontendOpenOrders(cmd.Context(), user, dex)
-			if err != nil {
-				return err
-			}
-
-			result, err := info.ParseOpenOrdersResult(raw)
+			raw, result, err := fetchOpenOrders(cmd, cfg, user, dex)
 			if err != nil {
 				return err
 			}
@@ -112,7 +90,6 @@ func newInfoOpenOrdersCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().String("address", "", "user address (default: derived from configured private key)")
-	cmd.Flags().String("dex", "", "HIP-3 perp dex name")
 	return cmd
 }
 
@@ -122,9 +99,8 @@ func newInfoFillsCmd() *cobra.Command {
 		Short: "Get fill history for a user",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			addr, _ := cmd.Flags().GetString("address") //nolint:errcheck // known flag
 
-			user, err := info.ResolveUserAddress(addr, cfg)
+			user, err := resolveAddressFlagUser(cmd, cfg)
 			if err != nil {
 				return err
 			}
@@ -138,54 +114,24 @@ func newInfoFillsCmd() *cobra.Command {
 				aggregateByTimePtr = &aggregateByTime
 			}
 
-			ic := buildInfoClient(cfg)
-
-			// Use time-based endpoint when start or end is specified.
+			request := info.UserFillsRequest{Type: "userFills", User: user, AggregateByTime: aggregateByTimePtr}
 			if startStr != "" || endStr != "" {
-				startTime, err := parseTimeFlag(startStr)
-				if err != nil {
+				request.Type = "userFillsByTime"
+				if request.StartTime, err = parseTimeFlag(startStr); err != nil {
 					return err
 				}
-				endTime, err := parseTimeFlag(endStr)
-				if err != nil {
+				if request.EndTime, err = parseTimeFlag(endStr); err != nil {
 					return err
 				}
-
-				if cfg.DryRun {
-					return printResult(cmd, cfg, mustMarshal(info.UserFillsRequest{
-						Type:            "userFillsByTime",
-						User:            user,
-						StartTime:       startTime,
-						EndTime:         endTime,
-						AggregateByTime: aggregateByTimePtr,
-					}), nil)
-				}
-
-				raw, err := ic.UserFillsByTime(cmd.Context(), user, startTime, endTime, aggregateByTimePtr)
-				if err != nil {
-					return err
-				}
-
-				result, err := info.ParseFillsResult(raw)
-				if err != nil {
-					return err
-				}
-				return printResult(cmd, cfg, raw, result)
 			}
-
 			if cfg.DryRun {
-				return printResult(cmd, cfg, mustMarshal(info.UserFillsRequest{
-					Type:            "userFills",
-					User:            user,
-					AggregateByTime: aggregateByTimePtr,
-				}), nil)
+				return printResult(cmd, cfg, mustMarshal(request), nil)
 			}
 
-			raw, err := ic.UserFills(cmd.Context(), user, aggregateByTimePtr)
+			raw, err := fetchUserFillsRaw(cmd.Context(), buildInfoClient(cfg), request)
 			if err != nil {
 				return err
 			}
-
 			result, err := info.ParseFillsResult(raw)
 			if err != nil {
 				return err
@@ -200,6 +146,13 @@ func newInfoFillsCmd() *cobra.Command {
 	return cmd
 }
 
+func fetchUserFillsRaw(ctx context.Context, ic *info.InfoClient, request info.UserFillsRequest) ([]byte, error) {
+	if request.Type == "userFillsByTime" {
+		return ic.UserFillsByTime(ctx, request.User, request.StartTime, request.EndTime, request.AggregateByTime)
+	}
+	return ic.UserFills(ctx, request.User, request.AggregateByTime)
+}
+
 func newInfoOrderStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "order-status <oid>",
@@ -207,9 +160,8 @@ func newInfoOrderStatusCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.FromContext(cmd.Context())
-			addr, _ := cmd.Flags().GetString("address") //nolint:errcheck // known flag
 
-			user, err := info.ResolveUserAddress(addr, cfg)
+			user, err := resolveAddressFlagUser(cmd, cfg)
 			if err != nil {
 				return err
 			}
@@ -223,13 +175,10 @@ func newInfoOrderStatusCmd() *cobra.Command {
 			}
 
 			if cfg.DryRun {
-				return printResult(cmd, cfg, mustMarshal(info.OrderStatusRequest{
-					Type: "orderStatus", User: user, Oid: oid,
-				}), nil)
+				return printResult(cmd, cfg, mustMarshal(info.OrderStatusRequest{Type: "orderStatus", User: user, Oid: oid}), nil)
 			}
 
-			ic := buildInfoClient(cfg)
-			raw, err := ic.OrderStatus(cmd.Context(), user, oid)
+			raw, err := buildInfoClient(cfg).OrderStatus(cmd.Context(), user, oid)
 			if err != nil {
 				return err
 			}
@@ -246,21 +195,17 @@ func newInfoRateLimitCmd() *cobra.Command {
 		Short: "Get rate limit info for a user",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			addr, _ := cmd.Flags().GetString("address") //nolint:errcheck // known flag
 
-			user, err := info.ResolveUserAddress(addr, cfg)
+			user, err := resolveAddressFlagUser(cmd, cfg)
 			if err != nil {
 				return err
 			}
 
 			if cfg.DryRun {
-				return printResult(cmd, cfg, mustMarshal(info.UserRateLimitRequest{
-					Type: "userRateLimit", User: user,
-				}), nil)
+				return printResult(cmd, cfg, mustMarshal(info.UserRateLimitRequest{Type: "userRateLimit", User: user}), nil)
 			}
 
-			ic := buildInfoClient(cfg)
-			raw, err := ic.UserRateLimit(cmd.Context(), user)
+			raw, err := buildInfoClient(cfg).UserRateLimit(cmd.Context(), user)
 			if err != nil {
 				return err
 			}

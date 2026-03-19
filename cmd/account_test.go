@@ -191,6 +191,29 @@ func TestAccountApproveAgent_NameRequiredWithoutRevoke(t *testing.T) {
 	}
 }
 
+func TestAccountApproveAgent_InvalidAddressPrecedesNameValidation(t *testing.T) {
+	_, _, run := newTestRootWithServer(t, "")
+
+	err := run("account", "approve-agent",
+		"--agent", "bad",
+		"--dry-run",
+	)
+	if err == nil {
+		t.Fatal("expected validation error for invalid agent address")
+	}
+
+	var cliErr *output.CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected CLIError, got %T", err)
+	}
+	if cliErr.Code != output.ErrValidation {
+		t.Fatalf("code = %q, want %q", cliErr.Code, output.ErrValidation)
+	}
+	if cliErr.Message != "invalid agent address" {
+		t.Fatalf("message = %q, want %q", cliErr.Message, "invalid agent address")
+	}
+}
+
 func TestAccountSetAbstraction_DryRun(t *testing.T) {
 	stdout, _, run := newTestRootWithServer(t, "")
 

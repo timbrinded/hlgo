@@ -20,11 +20,9 @@ func newAccountApproveAgentCmd() *cobra.Command {
 Note: Hyperliquid may charge an activation fee when first approving an agent.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			agent, _ := cmd.Flags().GetString("agent")   //nolint:errcheck // known flag
-			name, _ := cmd.Flags().GetString("name")     //nolint:errcheck // known flag
-			revoke, _ := cmd.Flags().GetBool("revoke")   //nolint:errcheck // known flag
-			confirm, _ := cmd.Flags().GetBool("confirm") //nolint:errcheck // known flag
-			yes, _ := cmd.Flags().GetBool("yes")         //nolint:errcheck // known flag
+			agent, _ := cmd.Flags().GetString("agent") //nolint:errcheck // known flag
+			name, _ := cmd.Flags().GetString("name")   //nolint:errcheck // known flag
+			revoke, _ := cmd.Flags().GetBool("revoke") //nolint:errcheck // known flag
 
 			if !common.IsHexAddress(agent) {
 				return output.NewCLIError(output.ErrValidation, "invalid agent address").
@@ -34,7 +32,7 @@ Note: Hyperliquid may charge an activation fee when first approving an agent.`,
 			agentName := strings.TrimSpace(name)
 			switch {
 			case revoke:
-				if err := requireConfirm("approve-agent --revoke", confirm || yes, cfg.DryRun); err != nil {
+				if err := requireConfirm("approve-agent --revoke", confirmationAccepted(cmd), cfg.DryRun); err != nil {
 					return err
 				}
 				agentName = ""
@@ -52,11 +50,12 @@ Note: Hyperliquid may charge an activation fee when first approving an agent.`,
 				return err
 			}
 
-			raw, err := exec.ApproveAgent(cmd.Context(), exchange.ApproveAgentInput{
+			input := exchange.ApproveAgentInput{
 				AgentAddress: strings.ToLower(agent),
 				AgentName:    agentName,
 				DryRun:       cfg.DryRun,
-			})
+			}
+			raw, err := exec.ApproveAgent(cmd.Context(), input)
 			if err != nil {
 				return err
 			}
@@ -70,8 +69,7 @@ Note: Hyperliquid may charge an activation fee when first approving an agent.`,
 	cmd.Flags().Bool("revoke", false, "revoke agent by setting an empty label")
 	cmd.Flags().Bool("confirm", false, "confirm execution for revoke flow")
 	cmd.Flags().Bool("yes", false, "alias for --confirm")
-	//nolint:errcheck // MarkFlagRequired on known flags never fails
-	cmd.MarkFlagRequired("agent")
+	mustMarkRequiredFlags(cmd, "agent")
 
 	return cmd
 }

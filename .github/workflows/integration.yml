@@ -3,6 +3,7 @@ name: Integration
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -51,6 +52,5 @@ jobs:
       - name: Integration tests
         env:
           HL_TESTNET: "true"
-          HL_TEST_AGENT_KEY: ${{ secrets.HL_TEST_AGENT_KEY }}
-          HL_TEST_MASTER_KEY: ${{ secrets.HL_TEST_MASTER_KEY }}
+          HL_TEST_PRIVATE_KEY: ${{ secrets.HL_TEST_MASTER_KEY }}
         run: make test-integration

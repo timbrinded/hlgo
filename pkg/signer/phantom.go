@@ -60,16 +60,5 @@ func buildConnectionID(action any, nonce int64, vaultAddress *common.Address, ex
 
 // phantomAgentTypedData builds the EIP-712 typed data for a phantom agent signing request.
 func phantomAgentTypedData(source string, connectionID common.Hash) apitypes.TypedData {
-	return apitypes.TypedData{
-		Types: apitypes.Types{
-			"EIP712Domain": eip712DomainType,
-			"Agent":        phantomAgentType,
-		},
-		PrimaryType: "Agent",
-		Domain:      l1Domain(),
-		Message: apitypes.TypedDataMessage{
-			"source":       source,
-			"connectionId": connectionID[:],
-		},
-	}
+	return apitypes.TypedData{Types: apitypes.Types{"EIP712Domain": eip712DomainType, "Agent": phantomAgentType}, PrimaryType: "Agent", Domain: l1Domain(), Message: apitypes.TypedDataMessage{"source": source, "connectionId": connectionID[:]}}
 }

@@ -65,10 +65,7 @@ func (e *CLIError) WithDetails(key string, value any) *CLIError {
 
 // NewCLIError creates a new CLIError with the given code and message.
 func NewCLIError(code ErrorCode, message string) *CLIError {
-	return &CLIError{
-		Code:    code,
-		Message: message,
-	}
+	return &CLIError{Code: code, Message: message}
 }
 
 // WriteError serializes err as structured JSON to w and returns the exit code.

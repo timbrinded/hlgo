@@ -26,22 +26,13 @@ func newPositionLeverageCmd() *cobra.Command {
 					WithDetails("value", mode)
 			}
 
-			if leverage < 1 {
-				return output.NewCLIError(output.ErrValidation, "leverage must be at least 1").
-					WithDetails("value", leverage)
-			}
-
 			exec, err := buildExecutor(cfg)
 			if err != nil {
 				return err
 			}
 
-			result, err := exec.UpdateLeverage(cmd.Context(), exchange.UpdateLeverageInput{
-				Coin:     coin,
-				IsCross:  mode == "cross",
-				Leverage: leverage,
-				DryRun:   cfg.DryRun,
-			})
+			input := exchange.UpdateLeverageInput{Coin: coin, IsCross: mode == "cross", Leverage: leverage, DryRun: cfg.DryRun}
+			result, err := exec.UpdateLeverage(cmd.Context(), input)
 			if err != nil {
 				return err
 			}
@@ -54,10 +45,7 @@ func newPositionLeverageCmd() *cobra.Command {
 	cmd.Flags().Int("leverage", 0, "leverage multiplier (max is asset-specific, API-enforced)")
 	cmd.Flags().String("mode", "cross", "margin mode: cross or isolated")
 
-	for _, required := range []string{"coin", "leverage"} {
-		//nolint:errcheck // MarkFlagRequired on known flags never fails
-		cmd.MarkFlagRequired(required)
-	}
+	mustMarkRequiredFlags(cmd, "coin", "leverage")
 
 	return cmd
 }

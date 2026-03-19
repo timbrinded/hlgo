@@ -10,13 +10,13 @@ BIN_DIR  := bin
 DIST_DIR := dist
 TEST_OUT := /tmp/hlgo-test.out
 
-.PHONY: build test test\:ci test-cover test-integration vet fmt lint tidy check clean install \
+.PHONY: build test test\:ci test-cover test-integration test-integration-live vet fmt lint tidy check clean install \
         build-linux build-darwin build-windows dist
 
-# run-tests-quiet: local-friendly test runner — shows only failures + summary.
-# Usage: $(call run-tests-quiet,<extra go test flags>)
-define run-tests-quiet
-	@go test -race -count=1 $(1) ./... 2>&1 | tee $(TEST_OUT); \
+# run-tests-quiet-pkgs: local-friendly test runner — shows only failures + summary.
+# Usage: $(call run-tests-quiet-pkgs,<extra go test flags>,<packages>)
+define run-tests-quiet-pkgs
+	@go test -race -count=1 $(1) $(2) 2>&1 | tee $(TEST_OUT); \
 	status=$${PIPESTATUS[0]}; \
 	echo ""; \
 	echo "──────────────────────────────────────────"; \
@@ -25,6 +25,12 @@ define run-tests-quiet
 	echo "Tests: $$pass passed, $$fail failed"; \
 	echo "──────────────────────────────────────────"; \
 	exit $$status
+endef
+
+# run-tests-quiet: local-friendly test runner — shows only failures + summary.
+# Usage: $(call run-tests-quiet,<extra go test flags>)
+define run-tests-quiet
+	$(call run-tests-quiet-pkgs,$(1),./...)
 endef
 
 # run-tests-verbose: CI-friendly — full verbose output + summary.
@@ -59,9 +65,13 @@ test-cover:
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report: coverage.html"
 
-## test-integration: run integration tests (requires testnet env vars)
+## test-integration: run safe integration tests (live account mutation tests are excluded)
 test-integration:
-	$(call run-tests-quiet,-tags=integration -timeout=5m)
+	$(call run-tests-quiet-pkgs,-tags=integration -timeout=5m -skip '^TestIntegration_AccountLive',./e2e)
+
+## test-integration-live: run destructive live account integration tests (requires HL_TEST_PRIVATE_KEY + HL_TEST_LIVE_CONFIG_JSON)
+test-integration-live:
+	$(call run-tests-quiet-pkgs,-tags=integration -timeout=5m -run '^TestIntegration_AccountLive',./e2e)
 
 ## vet: static analysis
 vet:

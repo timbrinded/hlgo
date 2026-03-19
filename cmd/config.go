@@ -62,13 +62,9 @@ func resolveConfigPath(flagValue string) (string, error) {
 }
 
 func newConfigInitCmd() *cobra.Command {
-	var (
-		privateKeyEnv  string
-		accountAddress string
-		defaultDex     string
-		metadataTTL    int
-		force          bool
-	)
+	var privateKeyEnv, accountAddress, defaultDex string
+	var metadataTTL int
+	var force bool
 
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -82,45 +78,29 @@ an existing config unless --force is passed.`,
 			if err != nil {
 				return err
 			}
-
-			if !force {
-				if _, err := os.Stat(cfgPath); err == nil {
-					return fmt.Errorf("config file already exists: %s (use --force to overwrite)", cfgPath)
-				}
+			if _, err := os.Stat(cfgPath); !force && err == nil {
+				return fmt.Errorf("config file already exists: %s (use --force to overwrite)", cfgPath)
 			}
 
-			data := configFileData{
+			out, err := yaml.Marshal(configFileData{
 				PrivateKeyEnv:  privateKeyEnv,
 				AccountAddress: accountAddress,
 				DefaultDex:     defaultDex,
 				MetadataTTL:    metadataTTL,
-			}
-
-			out, err := yaml.Marshal(data)
+			})
 			if err != nil {
 				return fmt.Errorf("marshal config: %w", err)
-			}
-
-			if err := os.MkdirAll(filepath.Dir(cfgPath), 0700); err != nil {
+			} else if err := os.MkdirAll(filepath.Dir(cfgPath), 0700); err != nil {
 				return fmt.Errorf("create config directory: %w", err)
-			}
-
-			if err := os.WriteFile(cfgPath, out, 0600); err != nil {
+			} else if err := os.WriteFile(cfgPath, out, 0600); err != nil {
 				return fmt.Errorf("write config file: %w", err)
-			}
-
-			if privateKeyEnv != "" && os.Getenv(privateKeyEnv) == "" {
+			} else if privateKeyEnv != "" && os.Getenv(privateKeyEnv) == "" {
 				if _, werr := fmt.Fprintf(cmd.ErrOrStderr(), "warning: environment variable %s is not set\n", privateKeyEnv); werr != nil {
 					return werr
 				}
 			}
 
-			result, err := json.Marshal(map[string]string{"path": cfgPath})
-			if err != nil {
-				return fmt.Errorf("marshal result: %w", err)
-			}
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(result))
-			return err
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]string{"path": cfgPath})
 		},
 	}
 
@@ -130,11 +110,8 @@ an existing config unless --force is passed.`,
 	cmd.Flags().IntVar(&metadataTTL, "metadata-ttl", 300, "metadata cache TTL in seconds")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing config file")
 
-	cmd.PreRunE = func(cmd *cobra.Command, args []string) error {
-		if accountAddress == "" {
-			return nil
-		}
-		if !strictEthAddrRegex.MatchString(accountAddress) {
+	cmd.PreRunE = func(*cobra.Command, []string) error {
+		if accountAddress != "" && !strictEthAddrRegex.MatchString(accountAddress) {
 			return fmt.Errorf("invalid --account-address: must be 0x-prefixed 40-hex address")
 		}
 		return nil
@@ -173,12 +150,9 @@ func newConfigShowCmd() *cobra.Command {
 				result["private_key_preview"] = config.RedactKey(privateKeyVal)
 			}
 
-			out, err := json.MarshalIndent(result, "", "  ")
-			if err != nil {
-				return err
-			}
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(out))
-			return err
+			encoder := json.NewEncoder(cmd.OutOrStdout())
+			encoder.SetIndent("", "  ")
+			return encoder.Encode(result)
 		},
 	}
 }
@@ -215,38 +189,11 @@ func newConfigTestCmd() *cobra.Command {
 
 			privateKeySet := cfg.PrivateKeyEnv != "" && os.Getenv(cfg.PrivateKeyEnv) != ""
 			result["private_key_env_set"] = privateKeySet
+			result["connectivity"] = configConnectivityStatus(cmd.Context(), cfg)
 
-			// Test connectivity by fetching mid prices.
-			ic := buildInfoClient(cfg)
-			ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
-			defer cancel()
-
-			raw, cerr := ic.AllMids(ctx, cfg.Dex)
-			if cerr != nil {
-				result["connectivity"] = map[string]string{
-					"status": "failed",
-					"error":  cerr.Error(),
-				}
-			} else {
-				// Count coins to give useful feedback.
-				var mids map[string]string
-				if jerr := json.Unmarshal(raw, &mids); jerr == nil {
-					result["connectivity"] = map[string]any{
-						"status": "ok",
-						"coins":  len(mids),
-					}
-				} else {
-					result["connectivity"] = map[string]string{
-						"status": "ok",
-					}
-				}
-			}
-
-			out, err := json.MarshalIndent(result, "", "  ")
-			if err != nil {
-				return err
-			}
-			if _, err = fmt.Fprintln(cmd.OutOrStdout(), string(out)); err != nil {
+			encoder := json.NewEncoder(cmd.OutOrStdout())
+			encoder.SetIndent("", "  ")
+			if err := encoder.Encode(result); err != nil {
 				return err
 			}
 
@@ -265,6 +212,17 @@ func newConfigTestCmd() *cobra.Command {
 // for use by config show and config test (which skip PersistentPreRunE).
 // String flags are filtered for non-empty to avoid overriding file/default
 // values; "config" always passes since it has a non-empty default.
+func configConnectivityStatus(ctx context.Context, cfg *config.Config) any {
+	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	_, mids, err := fetchMids(probeCtx, cfg, cfg.Dex)
+	if err != nil {
+		return map[string]string{"status": "failed", "error": err.Error()}
+	}
+	return map[string]any{"status": "ok", "coins": len(mids)}
+}
+
 func newShowViper(cmd *cobra.Command) *viper.Viper {
 	v := viper.New()
 

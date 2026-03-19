@@ -1,15 +1,10 @@
 package cmd
 
 import (
-	"strings"
-
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/shopspring/decimal"
 	"github.com/spf13/cobra"
 
 	"github.com/timbrinded/hlgo/pkg/config"
 	"github.com/timbrinded/hlgo/pkg/exchange"
-	"github.com/timbrinded/hlgo/pkg/output"
 )
 
 func newAccountWithdrawCmd() *cobra.Command {
@@ -20,22 +15,14 @@ func newAccountWithdrawCmd() *cobra.Command {
 			cfg := config.FromContext(cmd.Context())
 			destination, _ := cmd.Flags().GetString("destination") //nolint:errcheck // known flag
 			amountStr, _ := cmd.Flags().GetString("amount")        //nolint:errcheck // known flag
-			confirm, _ := cmd.Flags().GetBool("confirm")           //nolint:errcheck // known flag
-			yes, _ := cmd.Flags().GetBool("yes")                   //nolint:errcheck // known flag
 
-			if err := requireConfirm("withdraw", confirm || yes, cfg.DryRun); err != nil {
+			if err := requireConfirm("withdraw", confirmationAccepted(cmd), cfg.DryRun); err != nil {
 				return err
 			}
 
-			if !common.IsHexAddress(destination) {
-				return output.NewCLIError(output.ErrValidation, "invalid destination address").
-					WithDetails("destination", destination)
-			}
-
-			amount, err := decimal.NewFromString(amountStr)
+			amount, err := parseDecimalField("amount", amountStr)
 			if err != nil {
-				return output.NewCLIError(output.ErrValidation, "invalid amount").
-					WithDetails("value", amountStr)
+				return err
 			}
 
 			exec, err := buildExecutor(cfg)
@@ -43,11 +30,8 @@ func newAccountWithdrawCmd() *cobra.Command {
 				return err
 			}
 
-			raw, err := exec.Withdraw3(cmd.Context(), exchange.Withdraw3Input{
-				Destination: strings.ToLower(destination),
-				Amount:      amount,
-				DryRun:      cfg.DryRun,
-			})
+			input := exchange.Withdraw3Input{Destination: destination, Amount: amount, DryRun: cfg.DryRun}
+			raw, err := exec.Withdraw3(cmd.Context(), input)
 			if err != nil {
 				return err
 			}
@@ -61,10 +45,7 @@ func newAccountWithdrawCmd() *cobra.Command {
 	cmd.Flags().Bool("confirm", false, "confirm execution for withdrawal")
 	cmd.Flags().Bool("yes", false, "alias for --confirm")
 
-	for _, required := range []string{"destination", "amount"} {
-		//nolint:errcheck // MarkFlagRequired on known flags never fails
-		cmd.MarkFlagRequired(required)
-	}
+	mustMarkRequiredFlags(cmd, "destination", "amount")
 
 	return cmd
 }

@@ -31,11 +31,7 @@ type WeightTracker struct {
 
 // NewWeightTracker creates a WeightTracker with default limit (1200) and window (1 minute).
 func NewWeightTracker() *WeightTracker {
-	return &WeightTracker{
-		limit:   defaultWeightLimit,
-		window:  defaultWindow,
-		nowFunc: time.Now,
-	}
+	return &WeightTracker{limit: defaultWeightLimit, window: defaultWindow, nowFunc: time.Now}
 }
 
 // Record adds a weight entry and prunes expired entries.
@@ -83,21 +79,14 @@ func (wt *WeightTracker) WarningJSON() json.RawMessage {
 		return nil
 	}
 
-	var oldest time.Time
+	oldest := now
 	if len(wt.entries) > 0 {
 		oldest = wt.entries[0].at
-	} else {
-		oldest = now
 	}
 	remaining := wt.window - now.Sub(oldest)
 	remaining = max(remaining, 0)
 
-	msg := map[string]any{
-		"warning":          "rate_limit_approaching",
-		"current":          total,
-		"limit":            wt.limit,
-		"window_remaining": fmt.Sprintf("%.0fs", remaining.Seconds()),
-	}
+	msg := map[string]any{"warning": "rate_limit_approaching", "current": total, "limit": wt.limit, "window_remaining": fmt.Sprintf("%.0fs", remaining.Seconds())}
 	data, _ := json.Marshal(msg) //nolint:errcheck // msg is a fixed-shape map, cannot fail
 	return data
 }

@@ -104,7 +104,7 @@ func TestPostExchange_Success(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	action := map[string]any{"type": "order", "orders": []any{}}
-	result, err := c.PostExchange(context.Background(), action, 1700000000000, SignatureWire{R: "0xdead", S: "0xbeef", V: 27}, "0xvault", &expiresAfter)
+	result, err := c.PostExchange(context.Background(), ExchangeRequest{Action: action, Nonce: 1700000000000, Signature: SignatureWire{R: "0xdead", S: "0xbeef", V: 27}, VaultAddress: "0xvault", ExpiresAfter: &expiresAfter})
 	if err != nil {
 		t.Fatalf("PostExchange returned error: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestPostExchange_OmitsEmptyVaultAddress(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
-	_, err := c.PostExchange(context.Background(), map[string]string{"type": "cancel"}, 1700000000000, SignatureWire{R: "0x1", S: "0x2", V: 27}, "", nil)
+	_, err := c.PostExchange(context.Background(), ExchangeRequest{Action: map[string]string{"type": "cancel"}, Nonce: 1700000000000, Signature: SignatureWire{R: "0x1", S: "0x2", V: 27}})
 	if err != nil {
 		t.Fatalf("PostExchange returned error: %v", err)
 	}
@@ -147,14 +147,11 @@ func TestPostExchange_StatusErrReturnsAPIError(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
-	_, err := c.PostExchange(
-		context.Background(),
-		map[string]string{"type": "approveAgent"},
-		1700000000000,
-		SignatureWire{R: "0x1", S: "0x2", V: 27},
-		"",
-		nil,
-	)
+	_, err := c.PostExchange(context.Background(), ExchangeRequest{
+		Action:    map[string]string{"type": "approveAgent"},
+		Nonce:     1700000000000,
+		Signature: SignatureWire{R: "0x1", S: "0x2", V: 27},
+	})
 	if err == nil {
 		t.Fatal("expected error for exchange status=err")
 	}
@@ -188,14 +185,11 @@ func TestPostExchange_OrderStatusesErrorReturnsAPIError(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
-	_, err := c.PostExchange(
-		context.Background(),
-		map[string]string{"type": "order"},
-		1700000000000,
-		SignatureWire{R: "0x1", S: "0x2", V: 27},
-		"",
-		nil,
-	)
+	_, err := c.PostExchange(context.Background(), ExchangeRequest{
+		Action:    map[string]string{"type": "order"},
+		Nonce:     1700000000000,
+		Signature: SignatureWire{R: "0x1", S: "0x2", V: 27},
+	})
 	if err == nil {
 		t.Fatal("expected error for exchange data.statuses[].error")
 	}
@@ -231,14 +225,11 @@ func TestPostExchange_WaitingForFillStatusesAreAccepted(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
-	result, err := c.PostExchange(
-		context.Background(),
-		map[string]string{"type": "order"},
-		1700000000000,
-		SignatureWire{R: "0x1", S: "0x2", V: 27},
-		"",
-		nil,
-	)
+	result, err := c.PostExchange(context.Background(), ExchangeRequest{
+		Action:    map[string]string{"type": "order"},
+		Nonce:     1700000000000,
+		Signature: SignatureWire{R: "0x1", S: "0x2", V: 27},
+	})
 	if err != nil {
 		t.Fatalf("expected waitingForFill statuses to be treated as benign, got error: %v", err)
 	}
@@ -255,14 +246,11 @@ func TestPostExchange_MixedOrderStatusesDetectsError(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
-	_, err := c.PostExchange(
-		context.Background(),
-		map[string]string{"type": "cancel"},
-		1700000000000,
-		SignatureWire{R: "0x1", S: "0x2", V: 27},
-		"",
-		nil,
-	)
+	_, err := c.PostExchange(context.Background(), ExchangeRequest{
+		Action:    map[string]string{"type": "cancel"},
+		Nonce:     1700000000000,
+		Signature: SignatureWire{R: "0x1", S: "0x2", V: 27},
+	})
 	if err == nil {
 		t.Fatal("expected error for mixed statuses containing an error entry")
 	}

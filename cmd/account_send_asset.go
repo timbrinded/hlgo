@@ -1,15 +1,10 @@
 package cmd
 
 import (
-	"strings"
-
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/shopspring/decimal"
 	"github.com/spf13/cobra"
 
 	"github.com/timbrinded/hlgo/pkg/config"
 	"github.com/timbrinded/hlgo/pkg/exchange"
-	"github.com/timbrinded/hlgo/pkg/output"
 )
 
 func newAccountSendAssetCmd() *cobra.Command {
@@ -21,25 +16,14 @@ func newAccountSendAssetCmd() *cobra.Command {
 			destination, _ := cmd.Flags().GetString("destination") //nolint:errcheck // known flag
 			token, _ := cmd.Flags().GetString("token")             //nolint:errcheck // known flag
 			amountStr, _ := cmd.Flags().GetString("amount")        //nolint:errcheck // known flag
-			confirm, _ := cmd.Flags().GetBool("confirm")           //nolint:errcheck // known flag
-			yes, _ := cmd.Flags().GetBool("yes")                   //nolint:errcheck // known flag
 
-			if err := requireConfirm("send-asset", confirm || yes, cfg.DryRun); err != nil {
+			if err := requireConfirm("send-asset", confirmationAccepted(cmd), cfg.DryRun); err != nil {
 				return err
 			}
 
-			if !common.IsHexAddress(destination) {
-				return output.NewCLIError(output.ErrValidation, "invalid destination address").
-					WithDetails("destination", destination)
-			}
-			if strings.TrimSpace(token) == "" {
-				return output.NewCLIError(output.ErrValidation, "token is required")
-			}
-
-			amount, err := decimal.NewFromString(amountStr)
+			amount, err := parseDecimalField("amount", amountStr)
 			if err != nil {
-				return output.NewCLIError(output.ErrValidation, "invalid amount").
-					WithDetails("value", amountStr)
+				return err
 			}
 
 			exec, err := buildExecutor(cfg)
@@ -47,12 +31,8 @@ func newAccountSendAssetCmd() *cobra.Command {
 				return err
 			}
 
-			raw, err := exec.SpotSend(cmd.Context(), exchange.SpotSendInput{
-				Destination: strings.ToLower(destination),
-				Token:       token,
-				Amount:      amount,
-				DryRun:      cfg.DryRun,
-			})
+			input := exchange.SpotSendInput{Destination: destination, Token: token, Amount: amount, DryRun: cfg.DryRun}
+			raw, err := exec.SpotSend(cmd.Context(), input)
 			if err != nil {
 				return err
 			}
@@ -67,10 +47,7 @@ func newAccountSendAssetCmd() *cobra.Command {
 	cmd.Flags().Bool("confirm", false, "confirm execution for asset send")
 	cmd.Flags().Bool("yes", false, "alias for --confirm")
 
-	for _, required := range []string{"destination", "token", "amount"} {
-		//nolint:errcheck // MarkFlagRequired on known flags never fails
-		cmd.MarkFlagRequired(required)
-	}
+	mustMarkRequiredFlags(cmd, "destination", "token", "amount")
 
 	return cmd
 }

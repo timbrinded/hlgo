@@ -1,27 +1,40 @@
 package cmd
 
 import (
-	"os"
-	"strings"
-	"time"
-
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/shopspring/decimal"
 	"github.com/spf13/cobra"
 
-	"github.com/timbrinded/hlgo/pkg/client"
 	"github.com/timbrinded/hlgo/pkg/config"
 	"github.com/timbrinded/hlgo/pkg/exchange"
-	"github.com/timbrinded/hlgo/pkg/output"
-	"github.com/timbrinded/hlgo/pkg/resolver"
-	"github.com/timbrinded/hlgo/pkg/signer"
 )
 
-// tifMap maps user-friendly TIF strings to wire-format values.
-var tifMap = map[string]string{
-	"gtc": "Gtc",
-	"ioc": "Ioc",
-	"alo": "Alo",
+func buildPlaceOrderInput(cmd *cobra.Command, coin, sideFlag, priceStr, sizeStr, tifFlag string, reduce bool, cloidStr string, dryRun bool) (exchange.PlaceOrderInput, error) {
+	var err error
+	input := exchange.PlaceOrderInput{Coin: coin, ReduceOnly: reduce, Cloid: stringPointer(cloidStr), DryRun: dryRun}
+	input.Side, err = parseOrderSide(sideFlag)
+	if err != nil {
+		return exchange.PlaceOrderInput{}, err
+	}
+	input.Tif, err = parseOrderTIF(tifFlag)
+	if err != nil {
+		return exchange.PlaceOrderInput{}, err
+	}
+	input.Price, err = parseDecimalField("price", priceStr)
+	if err != nil {
+		return exchange.PlaceOrderInput{}, err
+	}
+	input.Size, err = parseDecimalField("size", sizeStr)
+	if err != nil {
+		return exchange.PlaceOrderInput{}, err
+	}
+	input.Builder, err = parseOptionalBuilder(cmd)
+	if err != nil {
+		return exchange.PlaceOrderInput{}, err
+	}
+	input.ExpiresAfter, err = parseOptionalExpiresAfter(cmd)
+	if err != nil {
+		return exchange.PlaceOrderInput{}, err
+	}
+	return input, nil
 }
 
 func newOrderPlaceCmd() *cobra.Command {
@@ -30,81 +43,17 @@ func newOrderPlaceCmd() *cobra.Command {
 		Short: "Place a limit order",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			coin, _ := cmd.Flags().GetString("coin")                             //nolint:errcheck // known flag
-			side, _ := cmd.Flags().GetString("side")                             //nolint:errcheck // known flag
-			priceStr, _ := cmd.Flags().GetString("price")                        //nolint:errcheck // known flag
-			sizeStr, _ := cmd.Flags().GetString("size")                          //nolint:errcheck // known flag
-			tifFlag, _ := cmd.Flags().GetString("tif")                           //nolint:errcheck // known flag
-			reduce, _ := cmd.Flags().GetBool("reduce")                           //nolint:errcheck // known flag
-			cloidStr, _ := cmd.Flags().GetString("cloid")                        //nolint:errcheck // known flag
-			builderAddr, _ := cmd.Flags().GetString("builder")                   //nolint:errcheck // known flag
-			builderFeeTenthsBp, _ := cmd.Flags().GetInt("builder-fee-tenths-bp") //nolint:errcheck // known flag
-			expiresAfterStr, _ := cmd.Flags().GetString("expires-after")         //nolint:errcheck // known flag
+			coin, _ := cmd.Flags().GetString("coin")      //nolint:errcheck // known flag
+			sideFlag, _ := cmd.Flags().GetString("side")  //nolint:errcheck // known flag
+			priceStr, _ := cmd.Flags().GetString("price") //nolint:errcheck // known flag
+			sizeStr, _ := cmd.Flags().GetString("size")   //nolint:errcheck // known flag
+			tifFlag, _ := cmd.Flags().GetString("tif")    //nolint:errcheck // known flag
+			reduce, _ := cmd.Flags().GetBool("reduce")    //nolint:errcheck // known flag
+			cloidStr, _ := cmd.Flags().GetString("cloid") //nolint:errcheck // known flag
 
-			// Validate side.
-			side = strings.ToLower(side)
-			if side != "buy" && side != "sell" {
-				return output.NewCLIError(output.ErrValidation, "side must be 'buy' or 'sell'").
-					WithDetails("value", side)
-			}
-
-			// Map TIF.
-			wireTif, ok := tifMap[strings.ToLower(tifFlag)]
-			if !ok {
-				return output.NewCLIError(output.ErrValidation, "invalid tif: "+tifFlag).
-					WithDetails("value", tifFlag).
-					WithDetails("valid", "gtc, ioc, alo")
-			}
-
-			// Parse price and size with decimal precision.
-			price, err := decimal.NewFromString(priceStr)
+			input, err := buildPlaceOrderInput(cmd, coin, sideFlag, priceStr, sizeStr, tifFlag, reduce, cloidStr, cfg.DryRun)
 			if err != nil {
-				return output.NewCLIError(output.ErrValidation, "invalid price").
-					WithDetails("value", priceStr)
-			}
-			size, err := decimal.NewFromString(sizeStr)
-			if err != nil {
-				return output.NewCLIError(output.ErrValidation, "invalid size").
-					WithDetails("value", sizeStr)
-			}
-
-			var cloid *string
-			if cloidStr != "" {
-				cloid = &cloidStr
-			}
-
-			changedBuilder := cmd.Flags().Changed("builder")
-			changedBuilderFee := cmd.Flags().Changed("builder-fee-tenths-bp")
-			if changedBuilder != changedBuilderFee {
-				return output.NewCLIError(output.ErrValidation, "--builder and --builder-fee-tenths-bp must be provided together")
-			}
-
-			var builder *exchange.BuilderInfo
-			if changedBuilder {
-				if !common.IsHexAddress(builderAddr) {
-					return output.NewCLIError(output.ErrValidation, "invalid builder address").
-						WithDetails("builder", builderAddr)
-				}
-				if builderFeeTenthsBp < 0 {
-					return output.NewCLIError(output.ErrValidation, "builder fee must be non-negative").
-						WithDetails("builder_fee_tenths_bp", builderFeeTenthsBp)
-				}
-				builder = &exchange.BuilderInfo{
-					B: strings.ToLower(builderAddr),
-					F: builderFeeTenthsBp,
-				}
-			}
-
-			var expiresAfter *int64
-			if expiresAfterStr != "" {
-				ms, err := parseTimeFlag(expiresAfterStr)
-				if err != nil {
-					return err
-				}
-				if ms <= 0 {
-					return output.NewCLIError(output.ErrValidation, "expires-after must be a positive Unix ms timestamp")
-				}
-				expiresAfter = &ms
+				return err
 			}
 
 			exec, err := buildExecutor(cfg)
@@ -112,18 +61,7 @@ func newOrderPlaceCmd() *cobra.Command {
 				return err
 			}
 
-			result, err := exec.PlaceOrder(cmd.Context(), exchange.PlaceOrderInput{
-				Coin:         coin,
-				Side:         side,
-				Price:        price,
-				Size:         size,
-				Tif:          wireTif,
-				ReduceOnly:   reduce,
-				Cloid:        cloid,
-				Builder:      builder,
-				ExpiresAfter: expiresAfter,
-				DryRun:       cfg.DryRun,
-			})
+			result, err := exec.PlaceOrder(cmd.Context(), input)
 			if err != nil {
 				return err
 			}
@@ -143,43 +81,7 @@ func newOrderPlaceCmd() *cobra.Command {
 	cmd.Flags().Int("builder-fee-tenths-bp", 0, "builder fee in tenths of a basis point (requires --builder)")
 	cmd.Flags().String("expires-after", "", "expiry timestamp (Unix ms or ISO 8601)")
 
-	for _, required := range []string{"coin", "side", "price", "size"} {
-		//nolint:errcheck // MarkFlagRequired on known flags never fails
-		cmd.MarkFlagRequired(required)
-	}
+	mustMarkRequiredFlags(cmd, "coin", "side", "price", "size")
 
 	return cmd
-}
-
-// buildExecutor constructs an exchange.Executor from the current config.
-func buildExecutor(cfg *config.Config) (*exchange.Executor, error) {
-	keyHex := os.Getenv(cfg.PrivateKeyEnv)
-	if keyHex == "" {
-		return nil, output.NewCLIError(output.ErrConfig, "private key not set").
-			WithDetails("env_var", cfg.PrivateKeyEnv)
-	}
-
-	s, err := signer.NewSigner(keyHex)
-	if err != nil {
-		return nil, err
-	}
-
-	c := client.NewClient(baseURL(cfg))
-	cacheDir := resolveCacheDir(cfg)
-	r := resolver.NewResolver(c, cacheDir, time.Duration(cfg.MetadataTTL)*time.Second)
-
-	return exchange.NewExecutor(s, c, r, !cfg.Testnet), nil
-}
-
-// resolveCacheDir returns the cache directory path for the current network.
-func resolveCacheDir(cfg *config.Config) string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	network := "mainnet"
-	if cfg.Testnet {
-		network = "testnet"
-	}
-	return home + "/.hlgo/cache/" + network
 }

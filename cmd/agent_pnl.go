@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -84,7 +82,6 @@ func newAgentPnlCmd() *cobra.Command {
 		Short: "Compute unrealized, realized, and funding PnL",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			address, _ := cmd.Flags().GetString("address")               //nolint:errcheck // known flag
 			lookbackHours, _ := cmd.Flags().GetInt("lookback-hours")     //nolint:errcheck // known flag
 			aggregateByTime, _ := cmd.Flags().GetBool("aggregate-fills") //nolint:errcheck // known flag
 
@@ -93,7 +90,7 @@ func newAgentPnlCmd() *cobra.Command {
 					WithDetails("value", lookbackHours)
 			}
 
-			user, err := info.ResolveUserAddress(address, cfg)
+			user, err := resolveAddressFlagUser(cmd, cfg)
 			if err != nil {
 				return err
 			}
@@ -105,129 +102,14 @@ func newAgentPnlCmd() *cobra.Command {
 			if cmd.Flags().Changed("aggregate-fills") {
 				aggregateByTimePtr = &aggregateByTime
 			}
-
 			if cfg.DryRun {
-				return printResult(cmd, cfg, mustMarshal(map[string]any{
-					"user":           user,
-					"lookback_hours": lookbackHours,
-					"requests": map[string]any{
-						"state": info.ClearinghouseStateRequest{
-							Type: "clearinghouseState",
-							User: user,
-							Dex:  cfg.Dex,
-						},
-						"mids": info.AllMidsRequest{
-							Type: "allMids",
-							Dex:  cfg.Dex,
-						},
-						"fills": info.UserFillsRequest{
-							Type:            "userFillsByTime",
-							User:            user,
-							StartTime:       startTime,
-							EndTime:         endTime,
-							AggregateByTime: aggregateByTimePtr,
-						},
-						"user_funding": info.UserFundingRequest{
-							Type:      "userFunding",
-							User:      user,
-							StartTime: startTime,
-							EndTime:   endTime,
-						},
-					},
-				}), nil)
+				return printResult(cmd, cfg, mustMarshal(agentPnlDryRunPayload(user, cfg.Dex, lookbackHours, startTime, endTime, aggregateByTimePtr)), nil)
 			}
 
-			ic := buildInfoClient(cfg)
-
-			stateRaw, err := ic.ClearinghouseState(cmd.Context(), user, cfg.Dex)
+			result, err := runAgentPnl(cmd, cfg, user, lookbackHours, now, startTime, endTime, aggregateByTimePtr)
 			if err != nil {
 				return err
 			}
-			state, err := info.ParseStateResult(stateRaw)
-			if err != nil {
-				return err
-			}
-
-			mids := make(info.MidsResult)
-			if len(state.AssetPositions) > 0 {
-				midsRaw, err := ic.AllMids(cmd.Context(), cfg.Dex)
-				if err != nil {
-					return err
-				}
-				mids, err = info.ParseMidsResult(midsRaw)
-				if err != nil {
-					return err
-				}
-			}
-
-			result := &agentPnlResult{
-				Address:       user,
-				LookbackHours: lookbackHours,
-				Timestamp:     now.Format(time.RFC3339),
-			}
-
-			realizedPnl := decimal.Zero
-			fillsRaw, fillsErr := ic.UserFillsByTime(cmd.Context(), user, startTime, endTime, aggregateByTimePtr)
-			if fillsErr != nil {
-				result.RealizedUnavailable = true
-				result.Errors = append(result.Errors, toAgentStepError("fills", fillsErr))
-			} else {
-				fills, parseErr := info.ParseFillsResult(fillsRaw)
-				if parseErr != nil {
-					result.RealizedUnavailable = true
-					result.Errors = append(result.Errors, toAgentStepError("fills", parseErr))
-				} else {
-					realizedPnl, result.Errors = addClosedPnl(fills, result.Errors, cfg.Dex)
-				}
-			}
-
-			fundingByCoin := make(map[string]decimal.Decimal)
-			totalFunding := decimal.Zero
-			userFundingRaw, fundingErr := ic.UserFunding(cmd.Context(), user, startTime, endTime)
-			if fundingErr != nil {
-				result.FundingUnavailable = true
-				result.Errors = append(result.Errors, toAgentStepError("user-funding", fundingErr))
-			} else {
-				funding, parseErr := info.ParseUserFundingResult(userFundingRaw)
-				if parseErr != nil {
-					result.FundingUnavailable = true
-					result.Errors = append(result.Errors, toAgentStepError("user-funding", parseErr))
-				} else {
-					fundingByCoin, totalFunding, result.Errors = aggregateFundingByCoin(funding, result.Errors, cfg.Dex)
-				}
-			}
-
-			totalUnrealized := decimal.Zero
-			result.Positions = make([]agentPositionPnl, 0, len(state.AssetPositions))
-			for _, ap := range state.AssetPositions {
-				pos, stepErr := positionPnl(ap.Position, mids, fundingByCoin)
-				if stepErr != nil {
-					result.Errors = append(result.Errors, *stepErr)
-					continue
-				}
-				result.Positions = append(result.Positions, *pos)
-
-				unrealized, parseErr := decimal.NewFromString(pos.UnrealizedPnl)
-				if parseErr != nil {
-					return output.NewCLIError(output.ErrAPI, "failed to parse unrealized pnl").
-						WithDetails("coin", pos.Coin).
-						WithDetails("value", pos.UnrealizedPnl)
-				}
-				totalUnrealized = totalUnrealized.Add(unrealized)
-			}
-
-			if len(state.AssetPositions) > 0 && len(result.Positions) == 0 {
-				return output.NewCLIError(output.ErrAPI, "agent pnl failed: unable to price any open positions").
-					WithDetails("errors", result.Errors)
-			}
-
-			totalPnl := totalUnrealized.Add(realizedPnl).Add(totalFunding)
-			result.TotalUnrealizedPnl = totalUnrealized.String()
-			result.RealizedPnl = realizedPnl.String()
-			result.TotalFundingPnl = totalFunding.String()
-			result.TotalPnl = totalPnl.String()
-			result.Partial = result.FundingUnavailable || result.RealizedUnavailable || len(result.Errors) > 0
-
 			return printResult(cmd, cfg, mustMarshal(result), agentPnlTable{result: result})
 		},
 	}
@@ -238,130 +120,92 @@ func newAgentPnlCmd() *cobra.Command {
 	return cmd
 }
 
-func positionPnl(position info.Position, mids info.MidsResult, fundingByCoin map[string]decimal.Decimal) (*agentPositionPnl, *agentStepError) {
-	size, err := decimal.NewFromString(position.Szi)
-	if err != nil {
-		stepErr := agentStepError{
-			Step:  "pnl",
-			Code:  output.ErrAPI,
-			Error: "invalid position size for " + position.Coin,
-		}
-		return nil, &stepErr
+func agentPnlDryRunPayload(user, dex string, lookbackHours int, startTime, endTime int64, aggregateByTimePtr *bool) map[string]any {
+	return map[string]any{
+		"user":           user,
+		"lookback_hours": lookbackHours,
+		"requests": map[string]any{
+			"state":        info.ClearinghouseStateRequest{Type: "clearinghouseState", User: user, Dex: dex},
+			"mids":         info.AllMidsRequest{Type: "allMids", Dex: dex},
+			"fills":        info.UserFillsRequest{Type: "userFillsByTime", User: user, StartTime: startTime, EndTime: endTime, AggregateByTime: aggregateByTimePtr},
+			"user_funding": info.UserFundingRequest{Type: "userFunding", User: user, StartTime: startTime, EndTime: endTime},
+		},
 	}
-
-	entryPx, err := decimal.NewFromString(position.EntryPx)
-	if err != nil {
-		stepErr := agentStepError{
-			Step:  "pnl",
-			Code:  output.ErrAPI,
-			Error: "invalid entry price for " + position.Coin,
-		}
-		return nil, &stepErr
-	}
-
-	midStr, ok := mids[position.Coin]
-	if !ok {
-		stepErr := agentStepError{
-			Step:  "pnl",
-			Code:  output.ErrAPI,
-			Error: "missing mid price for " + position.Coin,
-		}
-		return nil, &stepErr
-	}
-
-	midPx, err := decimal.NewFromString(midStr)
-	if err != nil {
-		stepErr := agentStepError{
-			Step:  "pnl",
-			Code:  output.ErrAPI,
-			Error: "invalid mid price for " + position.Coin,
-		}
-		return nil, &stepErr
-	}
-
-	unrealized := midPx.Sub(entryPx).Mul(size)
-	funding := fundingByCoin[position.Coin]
-
-	return &agentPositionPnl{
-		Coin:          position.Coin,
-		Size:          position.Szi,
-		EntryPrice:    position.EntryPx,
-		MidPrice:      midStr,
-		UnrealizedPnl: unrealized.String(),
-		FundingPnl:    funding.String(),
-	}, nil
 }
 
-func addClosedPnl(fills info.FillsResult, errs []agentStepError, dex string) (decimal.Decimal, []agentStepError) {
-	total := decimal.Zero
-	for _, fill := range fills {
-		if !coinInDexScope(fill.Coin, dex) {
-			continue
-		}
+func runAgentPnl(cmd *cobra.Command, cfg *config.Config, user string, lookbackHours int, now time.Time, startTime, endTime int64, aggregateByTimePtr *bool) (*agentPnlResult, error) {
+	ic := buildInfoClient(cfg)
+	_, state, err := fetchPerpState(cmd.Context(), cfg, user, cfg.Dex)
+	if err != nil {
+		return nil, err
+	}
 
-		closedPnl := fill.ClosedPnl
-		if closedPnl == "" {
-			continue
-		}
-
-		value, err := decimal.NewFromString(closedPnl)
+	mids := make(info.MidsResult)
+	if len(state.AssetPositions) > 0 {
+		_, mids, err = fetchMids(cmd.Context(), cfg, cfg.Dex)
 		if err != nil {
-			errs = append(errs, agentStepError{
-				Step:  "fills",
-				Code:  output.ErrAPI,
-				Error: "invalid closedPnl for oid " + strconv.FormatInt(fill.Oid, 10),
-			})
+			return nil, err
+		}
+	}
+
+	result := &agentPnlResult{Address: user, LookbackHours: lookbackHours, Timestamp: now.Format(time.RFC3339)}
+	realizedPnl, fundingByCoin, totalFunding := populateAgentPnlAttribution(ic, cmd, cfg, user, startTime, endTime, aggregateByTimePtr, result)
+	totalUnrealized := decimal.Zero
+	result.Positions = make([]agentPositionPnl, 0, len(state.AssetPositions))
+	for _, ap := range state.AssetPositions {
+		pos, stepErr := positionPnl(ap.Position, mids, fundingByCoin)
+		if stepErr != nil {
+			result.Errors = append(result.Errors, *stepErr)
 			continue
 		}
-		total = total.Add(value)
+		result.Positions = append(result.Positions, *pos)
+
+		unrealized, parseErr := decimal.NewFromString(pos.UnrealizedPnl)
+		if parseErr != nil {
+			return nil, output.NewCLIError(output.ErrAPI, "failed to parse unrealized pnl").
+				WithDetails("coin", pos.Coin).
+				WithDetails("value", pos.UnrealizedPnl)
+		}
+		totalUnrealized = totalUnrealized.Add(unrealized)
 	}
-	return total, errs
+	if len(state.AssetPositions) > 0 && len(result.Positions) == 0 {
+		return nil, output.NewCLIError(output.ErrAPI, "agent pnl failed: unable to price any open positions").
+			WithDetails("errors", result.Errors)
+	}
+
+	totalPnl := totalUnrealized.Add(realizedPnl).Add(totalFunding)
+	result.TotalUnrealizedPnl = totalUnrealized.String()
+	result.RealizedPnl = realizedPnl.String()
+	result.TotalFundingPnl = totalFunding.String()
+	result.TotalPnl = totalPnl.String()
+	result.Partial = result.FundingUnavailable || result.RealizedUnavailable || len(result.Errors) > 0
+	return result, nil
 }
 
-func aggregateFundingByCoin(funding info.UserFundingResult, errs []agentStepError, dex string) (map[string]decimal.Decimal, decimal.Decimal, []agentStepError) {
-	byCoin := make(map[string]decimal.Decimal)
-	total := decimal.Zero
-
-	for _, entry := range funding {
-		coin := entry.Delta.Coin
-		if !coinInDexScope(coin, dex) {
-			continue
-		}
-		if coin == "" {
-			coin = "UNKNOWN"
-		}
-		if entry.Delta.USDC == "" {
-			continue
-		}
-
-		value, err := decimal.NewFromString(entry.Delta.USDC)
-		if err != nil {
-			errs = append(errs, agentStepError{
-				Step:  "user-funding",
-				Code:  output.ErrAPI,
-				Error: "invalid funding usdc for coin " + coin,
-			})
-			continue
-		}
-
-		byCoin[coin] = byCoin[coin].Add(value)
-		total = total.Add(value)
+func populateAgentPnlAttribution(ic *info.InfoClient, cmd *cobra.Command, cfg *config.Config, user string, startTime, endTime int64, aggregateByTimePtr *bool, result *agentPnlResult) (decimal.Decimal, map[string]decimal.Decimal, decimal.Decimal) {
+	realizedPnl := decimal.Zero
+	fillsRaw, fillsErr := ic.UserFillsByTime(cmd.Context(), user, startTime, endTime, aggregateByTimePtr)
+	if fillsErr != nil {
+		result.RealizedUnavailable = true
+		result.Errors = append(result.Errors, toAgentStepError("fills", fillsErr))
+	} else if fills, parseErr := info.ParseFillsResult(fillsRaw); parseErr != nil {
+		result.RealizedUnavailable = true
+		result.Errors = append(result.Errors, toAgentStepError("fills", parseErr))
+	} else {
+		realizedPnl, result.Errors = addClosedPnl(fills, result.Errors, cfg.Dex)
 	}
 
-	return byCoin, total, errs
-}
-
-func coinInDexScope(coin, dex string) bool {
-	scope := strings.TrimSpace(strings.ToLower(dex))
-	if scope == "" {
-		return true
+	fundingByCoin := make(map[string]decimal.Decimal)
+	totalFunding := decimal.Zero
+	userFundingRaw, fundingErr := ic.UserFunding(cmd.Context(), user, startTime, endTime)
+	if fundingErr != nil {
+		result.FundingUnavailable = true
+		result.Errors = append(result.Errors, toAgentStepError("user-funding", fundingErr))
+	} else if funding, parseErr := info.ParseUserFundingResult(userFundingRaw); parseErr != nil {
+		result.FundingUnavailable = true
+		result.Errors = append(result.Errors, toAgentStepError("user-funding", parseErr))
+	} else {
+		fundingByCoin, totalFunding, result.Errors = aggregateFundingByCoin(funding, result.Errors, cfg.Dex)
 	}
-
-	trimmedCoin := strings.TrimSpace(coin)
-	idx := strings.Index(trimmedCoin, ":")
-	if idx <= 0 {
-		return false
-	}
-	coinDex := strings.ToLower(strings.TrimSpace(trimmedCoin[:idx]))
-	return coinDex == scope
+	return realizedPnl, fundingByCoin, totalFunding
 }

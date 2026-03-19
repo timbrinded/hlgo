@@ -17,25 +17,8 @@ func newInfoFundingCmd() *cobra.Command {
 			coin := args[0]
 			predicted, _ := cmd.Flags().GetBool("predicted") //nolint:errcheck // known flag
 
-			ic := buildInfoClient(cfg)
-
 			if predicted {
-				if cfg.DryRun {
-					return printResult(cmd, cfg, mustMarshal(info.PredictedFundingsRequest{
-						Type: "predictedFundings",
-					}), nil)
-				}
-
-				raw, err := ic.PredictedFundings(cmd.Context())
-				if err != nil {
-					return err
-				}
-
-				result, err := info.ParsePredictedFundingsResult(raw)
-				if err != nil {
-					return err
-				}
-				return printResult(cmd, cfg, raw, result)
+				return runPredictedFunding(cmd, cfg)
 			}
 
 			startStr, _ := cmd.Flags().GetString("start") //nolint:errcheck // known flag
@@ -51,12 +34,10 @@ func newInfoFundingCmd() *cobra.Command {
 			}
 
 			if cfg.DryRun {
-				return printResult(cmd, cfg, mustMarshal(info.FundingHistoryRequest{
-					Type: "fundingHistory", Coin: coin, StartTime: startTime, EndTime: endTime,
-				}), nil)
+				return printResult(cmd, cfg, mustMarshal(info.FundingHistoryRequest{Type: "fundingHistory", Coin: coin, StartTime: startTime, EndTime: endTime}), nil)
 			}
 
-			raw, err := ic.FundingHistory(cmd.Context(), coin, startTime, endTime)
+			raw, err := buildInfoClient(cfg).FundingHistory(cmd.Context(), coin, startTime, endTime)
 			if err != nil {
 				return err
 			}
@@ -74,19 +55,35 @@ func newInfoFundingCmd() *cobra.Command {
 	return cmd
 }
 
+func runPredictedFunding(cmd *cobra.Command, cfg *config.Config) error {
+	if cfg.DryRun {
+		return printResult(cmd, cfg, mustMarshal(info.PredictedFundingsRequest{Type: "predictedFundings"}), nil)
+	}
+
+	raw, err := buildInfoClient(cfg).PredictedFundings(cmd.Context())
+	if err != nil {
+		return err
+	}
+
+	result, err := info.ParsePredictedFundingsResult(raw)
+	if err != nil {
+		return err
+	}
+	return printResult(cmd, cfg, raw, result)
+}
+
 func newInfoPerpDexsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "perp-dexs",
 		Short: "List HIP-3 perp dexes",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			ic := buildInfoClient(cfg)
 
 			if cfg.DryRun {
 				return printResult(cmd, cfg, mustMarshal(info.PerpDexsRequest{Type: "perpDexs"}), nil)
 			}
 
-			raw, err := ic.PerpDexs(cmd.Context())
+			raw, err := buildInfoClient(cfg).PerpDexs(cmd.Context())
 			if err != nil {
 				return err
 			}

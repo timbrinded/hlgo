@@ -1,16 +1,33 @@
 package cmd
 
 import (
-	"strings"
-
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/shopspring/decimal"
 	"github.com/spf13/cobra"
 
 	"github.com/timbrinded/hlgo/pkg/config"
 	"github.com/timbrinded/hlgo/pkg/exchange"
-	"github.com/timbrinded/hlgo/pkg/output"
 )
+
+func buildPlaceMarketOrderInput(cmd *cobra.Command, cfg *config.Config, coin, side, sizeStr, slippageStr string) (exchange.PlaceMarketOrderInput, error) {
+	var err error
+	input := exchange.PlaceMarketOrderInput{Coin: coin, Side: side, DryRun: cfg.DryRun}
+	input.Builder, err = parseOptionalBuilder(cmd)
+	if err != nil {
+		return exchange.PlaceMarketOrderInput{}, err
+	}
+	input.ExpiresAfter, err = parseOptionalExpiresAfter(cmd)
+	if err != nil {
+		return exchange.PlaceMarketOrderInput{}, err
+	}
+	input.Size, err = parseDecimalField("size", sizeStr)
+	if err != nil {
+		return exchange.PlaceMarketOrderInput{}, err
+	}
+	input.SlippagePercent, err = parseDecimalField("slippage", slippageStr)
+	if err != nil {
+		return exchange.PlaceMarketOrderInput{}, err
+	}
+	return input, nil
+}
 
 func newOrderMarketCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -20,72 +37,14 @@ func newOrderMarketCmd() *cobra.Command {
 The order is placed as an IOC (immediate-or-cancel) at the slippage-adjusted price.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := config.FromContext(cmd.Context())
-			coin, _ := cmd.Flags().GetString("coin")                             //nolint:errcheck // known flag
-			side, _ := cmd.Flags().GetString("side")                             //nolint:errcheck // known flag
-			sizeStr, _ := cmd.Flags().GetString("size")                          //nolint:errcheck // known flag
-			slippageStr, _ := cmd.Flags().GetString("slippage")                  //nolint:errcheck // known flag
-			builderAddr, _ := cmd.Flags().GetString("builder")                   //nolint:errcheck // known flag
-			builderFeeTenthsBp, _ := cmd.Flags().GetInt("builder-fee-tenths-bp") //nolint:errcheck // known flag
-			expiresAfterStr, _ := cmd.Flags().GetString("expires-after")         //nolint:errcheck // known flag
+			coin, _ := cmd.Flags().GetString("coin")            //nolint:errcheck // known flag
+			side, _ := cmd.Flags().GetString("side")            //nolint:errcheck // known flag
+			sizeStr, _ := cmd.Flags().GetString("size")         //nolint:errcheck // known flag
+			slippageStr, _ := cmd.Flags().GetString("slippage") //nolint:errcheck // known flag
 
-			side = strings.ToLower(side)
-			if side != "buy" && side != "sell" {
-				return output.NewCLIError(output.ErrValidation, "side must be 'buy' or 'sell'").
-					WithDetails("value", side)
-			}
-
-			changedBuilder := cmd.Flags().Changed("builder")
-			changedBuilderFee := cmd.Flags().Changed("builder-fee-tenths-bp")
-			if changedBuilder != changedBuilderFee {
-				return output.NewCLIError(output.ErrValidation, "--builder and --builder-fee-tenths-bp must be provided together")
-			}
-
-			var builder *exchange.BuilderInfo
-			if changedBuilder {
-				if !common.IsHexAddress(builderAddr) {
-					return output.NewCLIError(output.ErrValidation, "invalid builder address").
-						WithDetails("builder", builderAddr)
-				}
-				if builderFeeTenthsBp < 0 {
-					return output.NewCLIError(output.ErrValidation, "builder fee must be non-negative").
-						WithDetails("builder_fee_tenths_bp", builderFeeTenthsBp)
-				}
-				builder = &exchange.BuilderInfo{
-					B: strings.ToLower(builderAddr),
-					F: builderFeeTenthsBp,
-				}
-			}
-
-			var expiresAfter *int64
-			if expiresAfterStr != "" {
-				ms, err := parseTimeFlag(expiresAfterStr)
-				if err != nil {
-					return err
-				}
-				if ms <= 0 {
-					return output.NewCLIError(output.ErrValidation, "expires-after must be a positive Unix ms timestamp")
-				}
-				expiresAfter = &ms
-			}
-
-			size, err := decimal.NewFromString(sizeStr)
+			input, err := buildPlaceMarketOrderInput(cmd, cfg, coin, side, sizeStr, slippageStr)
 			if err != nil {
-				return output.NewCLIError(output.ErrValidation, "invalid size").
-					WithDetails("value", sizeStr)
-			}
-
-			slippageDecimal, err := decimal.NewFromString(slippageStr)
-			if err != nil {
-				return output.NewCLIError(output.ErrValidation, "invalid slippage").
-					WithDetails("value", slippageStr)
-			}
-			if slippageDecimal.IsNegative() {
-				return output.NewCLIError(output.ErrValidation, "slippage must be non-negative").
-					WithDetails("value", slippageStr)
-			}
-			if slippageDecimal.GreaterThanOrEqual(decimal.NewFromInt(100)) {
-				return output.NewCLIError(output.ErrValidation, "slippage must be less than 100 percent").
-					WithDetails("value", slippageStr)
+				return err
 			}
 
 			exec, err := buildExecutor(cfg)
@@ -93,15 +52,7 @@ The order is placed as an IOC (immediate-or-cancel) at the slippage-adjusted pri
 				return err
 			}
 
-			result, err := exec.PlaceMarketOrder(cmd.Context(), exchange.PlaceMarketOrderInput{
-				Coin:            coin,
-				Side:            side,
-				Size:            size,
-				SlippagePercent: slippageDecimal,
-				Builder:         builder,
-				ExpiresAfter:    expiresAfter,
-				DryRun:          cfg.DryRun,
-			})
+			result, err := exec.PlaceMarketOrder(cmd.Context(), input)
 			if err != nil {
 				return err
 			}
@@ -118,10 +69,7 @@ The order is placed as an IOC (immediate-or-cancel) at the slippage-adjusted pri
 	cmd.Flags().Int("builder-fee-tenths-bp", 0, "builder fee in tenths of a basis point (requires --builder)")
 	cmd.Flags().String("expires-after", "", "expiry timestamp (Unix ms or ISO 8601)")
 
-	for _, required := range []string{"coin", "side", "size"} {
-		//nolint:errcheck // MarkFlagRequired on known flags never fails
-		cmd.MarkFlagRequired(required)
-	}
+	mustMarkRequiredFlags(cmd, "coin", "side", "size")
 
 	return cmd
 }
