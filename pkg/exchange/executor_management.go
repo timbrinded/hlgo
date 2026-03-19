@@ -8,6 +8,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	"github.com/timbrinded/hlgo/pkg/client"
 	"github.com/timbrinded/hlgo/pkg/output"
 	"github.com/timbrinded/hlgo/pkg/wire"
 )
@@ -172,7 +173,7 @@ func (e *Executor) executeL1Action(ctx context.Context, action any, expiresAfter
 	if err != nil {
 		return nil, err
 	}
-	return e.client.PostExchange(ctx, action, nonce, sigToWire(sig), "", expiresAfter)
+	return e.client.PostExchange(ctx, client.ExchangeRequest{Action: action, Nonce: nonce, Signature: sigToWire(sig), ExpiresAfter: expiresAfter})
 }
 
 // PlaceBatchOrders signs and sends a pre-built OrderAction for batch order placement.

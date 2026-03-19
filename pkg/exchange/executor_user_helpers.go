@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 
+	"github.com/timbrinded/hlgo/pkg/client"
 	"github.com/timbrinded/hlgo/pkg/output"
 )
 
@@ -69,7 +70,7 @@ func (e *Executor) executeUserAction(
 		return nil, err
 	}
 
-	return e.client.PostExchange(ctx, actionMap, nonce, sigToWire(sig), "", nil)
+	return e.client.PostExchange(ctx, client.ExchangeRequest{Action: actionMap, Nonce: nonce, Signature: sigToWire(sig)})
 }
 
 func userActionMap(action any) (map[string]any, error) {

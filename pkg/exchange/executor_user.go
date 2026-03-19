@@ -145,21 +145,7 @@ func (e *Executor) Withdraw3(ctx context.Context, input Withdraw3Input) (json.Ra
 
 // ClassTransfer executes a classTransfer user-signed action.
 func (e *Executor) ClassTransfer(ctx context.Context, input ClassTransferInput) (json.RawMessage, error) {
-	if !input.Amount.IsPositive() {
-		return nil, output.NewCLIError(output.ErrValidation, "amount must be positive").
-			WithDetails("value", input.Amount.String())
-	}
-
-	nonce := time.Now().UnixMilli()
-	action := BuildUSDClassTransferAction(input.Amount.String(), input.ToPerp, nonce)
-	return e.executeUserAction(
-		ctx,
-		action,
-		nonce,
-		"HyperliquidTransaction:UsdClassTransfer",
-		usdClassTransferSignTypes,
-		input.DryRun,
-	)
+	return e.USDClassTransfer(ctx, USDClassTransferInput(input))
 }
 
 // SpotSend executes a spotSend user-signed action.

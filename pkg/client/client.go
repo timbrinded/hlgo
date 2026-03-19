@@ -62,8 +62,8 @@ type SignatureWire struct {
 	V int    `json:"v"`
 }
 
-// exchangeRequest is the envelope for POST /exchange.
-type exchangeRequest struct {
+// ExchangeRequest is the signed request envelope for POST /exchange.
+type ExchangeRequest struct {
 	Action       any           `json:"action"`
 	Nonce        int64         `json:"nonce"`
 	Signature    SignatureWire `json:"signature"`
@@ -78,17 +78,8 @@ func (c *Client) PostInfo(ctx context.Context, request any) (json.RawMessage, er
 }
 
 // PostExchange sends a signed action to the /exchange endpoint.
-// The action, nonce, and signature are wrapped in the standard envelope.
-// vaultAddress is included only when non-empty.
-func (c *Client) PostExchange(ctx context.Context, action any, nonce int64, signature SignatureWire, vaultAddress string, expiresAfter *int64) (json.RawMessage, error) {
-	body := exchangeRequest{
-		Action:       action,
-		Nonce:        nonce,
-		Signature:    signature,
-		VaultAddress: vaultAddress,
-		ExpiresAfter: expiresAfter,
-	}
-	raw, err := c.doPost(ctx, "/exchange", body)
+func (c *Client) PostExchange(ctx context.Context, request ExchangeRequest) (json.RawMessage, error) {
+	raw, err := c.doPost(ctx, "/exchange", request)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +233,7 @@ func (c *Client) recordWeight(path string, payload []byte) {
 		c.weightTracker.Record(weight)
 	}
 
-	if c.warnWriter != nil && c.weightTracker.ShouldWarn() {
+	if c.warnWriter != nil {
 		if warning := c.weightTracker.WarningJSON(); warning != nil {
 			//nolint:errcheck // best-effort warning; stderr write failure is non-fatal
 			c.warnWriter.Write(append(warning, '\n'))

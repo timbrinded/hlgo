@@ -58,51 +58,16 @@ func validateExchangeStatuses(status string, response json.RawMessage) error {
 			Statuses []json.RawMessage `json:"statuses"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(response, &payload); err != nil {
-		return nil
-	}
-	if len(payload.Data.Statuses) == 0 {
+	if err := json.Unmarshal(response, &payload); err != nil || len(payload.Data.Statuses) == 0 {
 		return nil
 	}
 
 	var errs []string
 	for _, entryRaw := range payload.Data.Statuses {
-		var asString string
-		if err := json.Unmarshal(entryRaw, &asString); err == nil {
-			asString = strings.TrimSpace(asString)
-			if isBenignExchangeStatus(asString) {
-				continue
-			}
-			errs = append(errs, asString)
-			continue
-		}
-
-		var asObject map[string]json.RawMessage
-		if err := json.Unmarshal(entryRaw, &asObject); err != nil {
-			continue
-		}
-
-		rawErr, ok := asObject["error"]
-		if !ok {
-			continue
-		}
-
-		var msg string
-		if err := json.Unmarshal(rawErr, &msg); err == nil && strings.TrimSpace(msg) != "" {
-			if isBenignExchangeStatus(msg) {
-				continue
-			}
+		if msg := exchangeStatusError(entryRaw); msg != "" {
 			errs = append(errs, msg)
-			continue
 		}
-
-		rawErrText := strings.TrimSpace(string(rawErr))
-		if isBenignExchangeStatus(rawErrText) {
-			continue
-		}
-		errs = append(errs, rawErrText)
 	}
-
 	if len(errs) == 0 {
 		return nil
 	}
@@ -111,4 +76,31 @@ func validateExchangeStatuses(status string, response json.RawMessage) error {
 		WithDetails("path", "/exchange").
 		WithDetails("exchange_status", status).
 		WithDetails("exchange_errors", errs)
+}
+
+func exchangeStatusError(entryRaw json.RawMessage) string {
+	var msg string
+	if err := json.Unmarshal(entryRaw, &msg); err == nil {
+		msg = strings.TrimSpace(msg)
+		if isBenignExchangeStatus(msg) {
+			return ""
+		}
+		return msg
+	}
+
+	var entry struct {
+		Error json.RawMessage `json:"error"`
+	}
+	if err := json.Unmarshal(entryRaw, &entry); err != nil || len(entry.Error) == 0 {
+		return ""
+	}
+
+	if err := json.Unmarshal(entry.Error, &msg); err != nil {
+		msg = string(entry.Error)
+	}
+	msg = strings.TrimSpace(msg)
+	if isBenignExchangeStatus(msg) {
+		return ""
+	}
+	return msg
 }

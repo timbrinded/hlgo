@@ -128,7 +128,7 @@ func newInfoFillsCmd() *cobra.Command {
 				return printResult(cmd, cfg, mustMarshal(request), nil)
 			}
 
-			raw, err := fetchUserFillsRaw(cmd.Context(), buildInfoClient(cfg), user, request)
+			raw, err := fetchUserFillsRaw(cmd.Context(), buildInfoClient(cfg), request)
 			if err != nil {
 				return err
 			}
@@ -146,11 +146,11 @@ func newInfoFillsCmd() *cobra.Command {
 	return cmd
 }
 
-func fetchUserFillsRaw(ctx context.Context, ic *info.InfoClient, user string, request info.UserFillsRequest) ([]byte, error) {
+func fetchUserFillsRaw(ctx context.Context, ic *info.InfoClient, request info.UserFillsRequest) ([]byte, error) {
 	if request.Type == "userFillsByTime" {
-		return ic.UserFillsByTime(ctx, user, request.StartTime, request.EndTime, request.AggregateByTime)
+		return ic.UserFillsByTime(ctx, request.User, request.StartTime, request.EndTime, request.AggregateByTime)
 	}
-	return ic.UserFills(ctx, user, request.AggregateByTime)
+	return ic.UserFills(ctx, request.User, request.AggregateByTime)
 }
 
 func newInfoOrderStatusCmd() *cobra.Command {
